@@ -20,6 +20,7 @@ public sealed class CatalogEntry
     public string? Cover { get; set; }
     public bool ClubAccount { get; set; }
     public int? MinAge { get; set; }
+    public bool Pinned { get; set; }          // закреплено на панели задач
     public LaunchSpec Launch { get; set; } = new();
 }
 

@@ -1,19 +1,39 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 
 namespace ClubShell.Locker;
 
-internal sealed record SpeedResult(bool Ok, double DownMbps, double UpMbps, long? PingMs, string? Error);
+internal sealed record SpeedResult(bool Ok, double DownMbps, double UpMbps, long? PingMs, string? Error, string? Source);
 
-/// <summary>Пинг до заданного узла и тест скорости (скачивание и отдача) через speed.cloudflare.com.</summary>
+/// <summary>
+/// Пинг и тест скорости. Сначала меряем до сервера клуба (он всегда доступен ПК и не зависит от сторонних сайтов),
+/// если сервер не настроен или недоступен — через speed.cloudflare.com. Тест не длиннее ~6 секунд на направление.
+/// </summary>
 internal static class NetworkTest
 {
-    /// <summary>Узел для пинга: по умолчанию публичный DNS; потом заменим адресом клубного сервера.</summary>
-    public static string PingHost => Environment.GetEnvironmentVariable("CLUBSHELL_PING_HOST") ?? "1.1.1.1";
-
-    private static string BaseUrl => Environment.GetEnvironmentVariable("CLUBSHELL_SPEEDTEST_URL") ?? "https://speed.cloudflare.com";
+    private static string? _serverUrl;
+    private static string? _token;
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
     private static int _running;
+
+    /// <summary>Адрес сервера клуба и токен ПК: после этого тест и пинг идут к серверу.</summary>
+    public static void Configure(string? serverUrl, string? token)
+    {
+        _serverUrl = string.IsNullOrWhiteSpace(serverUrl) ? null : serverUrl.TrimEnd('/');
+        _token = token;
+    }
+
+    /// <summary>Узел для пинга: сервер клуба, если он известен, иначе публичный DNS.</summary>
+    public static string PingHost
+    {
+        get
+        {
+            var env = Environment.GetEnvironmentVariable("CLUBSHELL_PING_HOST");
+            if (!string.IsNullOrEmpty(env)) return env;
+            return _serverUrl is not null && Uri.TryCreate(_serverUrl, UriKind.Absolute, out var u) && u.Host is not ("127.0.0.1" or "localhost") ? u.Host : "1.1.1.1";
+        }
+    }
 
     public static bool IsRunning => Volatile.Read(ref _running) == 1;
 
@@ -28,56 +48,86 @@ internal static class NetworkTest
         catch (Exception) { return null; }
     }
 
-    /// <summary>Не больше ~8 секунд на каждое направление, чтобы тест не занимал канал клуба надолго.</summary>
     public static async Task<SpeedResult> RunAsync()
     {
-        if (Interlocked.Exchange(ref _running, 1) == 1) return new SpeedResult(false, 0, 0, null, "Тест уже идёт");
+        if (Interlocked.Exchange(ref _running, 1) == 1) return new SpeedResult(false, 0, 0, null, "Тест уже идёт", null);
         try
         {
             var ping = await PingAsync();
-            var down = await DownloadAsync();
-            var up = await UploadAsync();
-            return new SpeedResult(true, down, up, ping, null);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[ClubShell] speedtest failed: {ex.Message}");
-            return new SpeedResult(false, 0, 0, null, "Не удалось измерить скорость");
+            var errors = new List<string>();
+
+            if (_serverUrl is not null && _token is not null)
+            {
+                try
+                {
+                    var down = await DownloadAsync($"{_serverUrl}/api/pc/speedtest/down?bytes=25000000", _token);
+                    var up = await UploadAsync($"{_serverUrl}/api/pc/speedtest/up", _token, 4_000_000);
+                    return new SpeedResult(true, down, up, ping, null, "до сервера клуба");
+                }
+                catch (Exception ex) { errors.Add("сервер клуба: " + Describe(ex)); }
+            }
+
+            try
+            {
+                var down = await DownloadAsync("https://speed.cloudflare.com/__down?bytes=50000000", null);
+                var up = await UploadAsync("https://speed.cloudflare.com/__up", null, 5_000_000);
+                return new SpeedResult(true, down, up, ping, null, "интернет (Cloudflare)");
+            }
+            catch (Exception ex) { errors.Add("интернет: " + Describe(ex)); }
+
+            Debug.WriteLine("[ClubShell] speedtest failed: " + string.Join("; ", errors));
+            return new SpeedResult(false, 0, 0, ping, "Не удалось измерить: " + string.Join("; ", errors), null);
         }
         finally { Volatile.Write(ref _running, 0); }
     }
 
-    private static async Task<double> DownloadAsync()
+    private static string Describe(Exception ex) => ex switch
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } => "подождите 10 секунд и повторите",
+        HttpRequestException { StatusCode: { } code } => $"ответ {(int)code}",
+        HttpRequestException => "нет соединения",
+        TaskCanceledException => "превышено время ожидания",
+        _ => ex.Message,
+    };
+
+    private static HttpRequestMessage Req(HttpMethod method, string url, string? token)
+    {
+        var r = new HttpRequestMessage(method, url);
+        if (token is not null) r.Headers.Add("X-Pc-Token", token);
+        return r;
+    }
+
+    private static async Task<double> DownloadAsync(string url, string? token)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
         var sw = Stopwatch.StartNew();
         long total = 0;
         try
         {
-            using var resp = await Http.GetAsync($"{BaseUrl}/__down?bytes=100000000", HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var req = Req(HttpMethod.Get, url, token);
+            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             resp.EnsureSuccessStatusCode();
             await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token);
             var buf = new byte[81920];
             int n;
             while ((n = await stream.ReadAsync(buf, cts.Token)) > 0) total += n;
         }
-        catch (OperationCanceledException) { /* вышло время теста: считаем по тому, что успели получить */ }
+        catch (OperationCanceledException) when (total > 0) { /* время теста вышло: считаем по тому, что успели получить */ }
         return Mbps(total, sw.Elapsed);
     }
 
-    private static async Task<double> UploadAsync()
+    private static async Task<double> UploadAsync(string url, string? token, int size)
     {
-        const int size = 10_000_000;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var data = new byte[size];
+        Random.Shared.NextBytes(data);
         var sw = Stopwatch.StartNew();
-        try
-        {
-            using var content = new ByteArrayContent(new byte[size]);
-            using var resp = await Http.PostAsync($"{BaseUrl}/__up", content, cts.Token);
-            resp.EnsureSuccessStatusCode();
-            return Mbps(size, sw.Elapsed);
-        }
-        catch (OperationCanceledException) { return 0; }
+        using var req = Req(HttpMethod.Post, url, token);
+        req.Content = new ByteArrayContent(data);
+        req.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var resp = await Http.SendAsync(req, cts.Token);
+        resp.EnsureSuccessStatusCode();
+        return Mbps(size, sw.Elapsed);
     }
 
     private static double Mbps(long bytes, TimeSpan elapsed) =>

@@ -65,6 +65,7 @@ export class MockHost {
         this.emit({ type: "network", online: true, name: "Ethernet", speedMbps: 1000 });
         this.emitWindows();
         this.emit({ type: "ping", ms: 14 });
+        this.emit({ type: "pinned", items: [{ id: "browser", title: "Браузер" }, { id: "discord", title: "Discord" }, { id: "telegram", title: "Telegram" }] });
         window.setInterval(() => this.emit({ type: "ping", ms: 10 + Math.round(Math.random() * 40) }), 4000);
         break;
       case "activateWindow": {
@@ -166,6 +167,8 @@ export class MockHost {
         this.emit({ type: "adminExitResult", ok: msg.pin === "0000" });
         break;
       case "reboot":
+      case "logout":
+      case "openExplorer":
         break;
     }
   }
@@ -207,6 +210,14 @@ const adminData = {
     { id: 2, login: "vip", balance: 2000, birth: null, banned: false, created: now() - 86400 * 9 },
     { id: 3, login: "ivan_k", balance: 35, birth: "2001-04-12", banned: true, created: now() - 86400 * 30 },
   ],
+  apps: [
+    { id: "cs2", title: "Counter-Strike 2", kind: "game", group: "Шутеры", cover: null as string | null, paths: ["find:RentalGames.exe"], args: "-idgame 730 -autostart -user {user}", clubAccount: true, minAge: null as number | null, enabled: true, pinned: false, sort: 10 },
+    { id: "valorant", title: "VALORANT", kind: "game", group: "Шутеры", cover: null, paths: ["C:\\Riot Games\\Riot Client\\RiotClientServices.exe"], args: null, clubAccount: false, minAge: 16, enabled: true, pinned: false, sort: 20 },
+    { id: "browser", title: "Браузер", kind: "app", group: "Интернет", cover: null, paths: ["find:chrome.exe", "find:msedge.exe"], args: null, clubAccount: false, minAge: null, enabled: true, pinned: true, sort: 10 },
+    { id: "discord", title: "Discord", kind: "app", group: "Общение", cover: null, paths: ["%LOCALAPPDATA%\\Discord\\Update.exe"], args: "--processStart Discord.exe", clubAccount: false, minAge: null, enabled: true, pinned: true, sort: 20 },
+    { id: "telegram", title: "Telegram", kind: "app", group: "Общение", cover: null, paths: ["%APPDATA%\\Telegram Desktop\\Telegram.exe"], args: null, clubAccount: false, minAge: null, enabled: true, pinned: true, sort: 30 },
+  ] as Array<{ id: string; title: string; kind: string; group: string | null; cover: string | null; paths: string[]; args: string | null; clubAccount: boolean; minAge: number | null; enabled: boolean; pinned: boolean; sort: number }>,
+  blocked: [{ id: 1, process: "cheatengine-x86_64.exe", note: "читы" }] as Array<{ id: number; process: string; note: string | null }>,
   tariffs: [
     { id: "h1", name: "1 час", minutes: 60, price: 140, nightOnly: false, zone: "ARENA", active: true, sort: 1 },
     { id: "h3", name: "3 часа", minutes: 180, price: 350, nightOnly: false, zone: "ARENA", active: true, sort: 2 },
@@ -241,6 +252,33 @@ function handleAdmin(msg: ToHost, emit: (m: FromHost) => void): void {
     return reply(adminData.guests.filter((g) => g.login.includes(q)));
   }
   if (msg.method === "GET" && route === "/tariffs") return reply(adminData.tariffs);
+  if (msg.method === "GET" && route === "/apps") return reply(adminData.apps);
+  if (msg.method === "PUT" && route === "/apps") {
+    const b = body as unknown as (typeof adminData.apps)[number];
+    const i = adminData.apps.findIndex((x) => x.id === b.id);
+    if (i >= 0) adminData.apps[i] = { ...adminData.apps[i]!, ...b, cover: adminData.apps[i]!.cover };
+    else adminData.apps.push({ ...b, cover: null });
+    return reply({ ok: true });
+  }
+  if (msg.method === "DELETE" && parts[0] === "apps" && parts[2] === "cover") {
+    const x = adminData.apps.find((q) => q.id === parts[1]);
+    if (x) x.cover = null;
+    return reply({ ok: true });
+  }
+  if (msg.method === "DELETE" && parts[0] === "apps") {
+    adminData.apps = adminData.apps.filter((x) => x.id !== parts[1]);
+    return reply({ ok: true });
+  }
+  if (msg.method === "UPLOAD" && parts[0] === "apps") return reply({ ok: true, cover: "/covers/mock.png" });
+  if (msg.method === "GET" && route === "/blocked") return reply(adminData.blocked);
+  if (msg.method === "POST" && route === "/blocked") {
+    adminData.blocked.push({ id: Date.now(), process: String(body.process), note: (body.note as string) || null });
+    return reply({ ok: true });
+  }
+  if (msg.method === "DELETE" && parts[0] === "blocked") {
+    adminData.blocked = adminData.blocked.filter((x) => x.id !== Number(parts[1]));
+    return reply({ ok: true });
+  }
   if (msg.method === "GET" && route === "/sessions") {
     const rows = adminData.pcs.filter((p) => p.session).map((p) => ({ id: p.session!.id, guestId: 1, guest: p.session!.guest, pcId: p.id, pc: p.name, tariffId: p.session!.tariff, started: p.session!.started, ends: now() + p.session!.remainingSec, ended: null, price: 350, reason: null }));
     const old = [{ id: 10, guestId: 2, guest: "vip", pcId: 4, pc: "PC-04", tariffId: "h5", started: now() - 90000, ends: now() - 72000, ended: now() - 72000, price: 500, reason: "Время вышло" }];

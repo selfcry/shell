@@ -35,6 +35,8 @@ internal sealed class LockerForm : Form
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
     private readonly System.Windows.Forms.Timer _guard = new() { Interval = 500 };
     private readonly System.Windows.Forms.Timer _status = new() { Interval = 2000 };
+    private readonly System.Windows.Forms.Timer _catalogTimer = new() { Interval = 60_000 }; // не изменился ли каталог на сервере
+    private readonly System.Windows.Forms.Timer _blockTimer = new() { Interval = 2000 };
     private TaskbarForm? _taskbar;
     private TaskManagerForm? _taskMgr;
     private ServerCommandLink? _commandLink; // только в тестовом режиме с настоящим сервером
@@ -67,6 +69,7 @@ internal sealed class LockerForm : Form
         {
             _serverUrl = testUrl;
             _api.Inner = new HttpClubApi(testUrl, testToken);
+            NetworkTest.Configure(testUrl, testToken);
             _commandLink = new ServerCommandLink(testUrl, testToken, m => RunOnUi(() => OnServerCommand(m)));
             _commandLink.Start();
         }
@@ -75,6 +78,8 @@ internal sealed class LockerForm : Form
         _session.Ended += reason => RunOnUi(() => EndSession(reason));
 
         _guard.Tick += (_, _) => Reassert();
+        _catalogTimer.Tick += (_, _) => LoadCatalog(force: false);
+        _blockTimer.Tick += (_, _) => EnforceBlocked();
         _status.Tick += async (_, _) => { if (!_locked) SystemTaskbar.Hide(); CheckService(); await SendStatusAsync(); };
         _service.MessageReceived += msg => RunOnUi(() => OnServiceMessage(msg));
 
@@ -82,6 +87,8 @@ internal sealed class LockerForm : Form
         Load += async (_, _) => await InitWebAsync();
         _service.Start();
         _status.Start();
+        _catalogTimer.Start();
+        _blockTimer.Start();
     }
 
     // ---------- режимы окна ----------
@@ -176,6 +183,7 @@ internal sealed class LockerForm : Form
                     _serverUrl = msg.ServerUrl;
                     (_api.Inner as IDisposable)?.Dispose();
                     _api.Inner = new HttpClubApi(msg.ServerUrl, msg.PcToken); // дальше вход и тарифы идут на настоящий сервер
+                    NetworkTest.Configure(msg.ServerUrl, msg.PcToken);
                 }
                 PostConfig();
                 break;
@@ -269,7 +277,8 @@ internal sealed class LockerForm : Form
         // Панель задач — отдельное окно на том же профиле WebView2.
         _taskMgr = new TaskManagerForm(env);
         _ = _taskMgr.PrepareAsync(); // заранее, чтобы диспетчер открывался сразу
-        _taskbar = new TaskbarForm(env, ShowDesktop, () => _taskMgr.Toggle());
+        _taskbar = new TaskbarForm(env, ShowDesktop, () => _taskMgr.Toggle(), id => Launch(id));
+        if (_pinned is not null) _taskbar.SetPinned(_pinned);
         _ = _taskbar.PrepareAsync();
         _taskbar.Reserved += FitToWorkArea;
         _taskbar.SetVisible(!_locked);
@@ -319,6 +328,14 @@ internal sealed class LockerForm : Form
 
                 case "login":
                     await HandleLoginAsync(Str(root, "username"), Str(root, "password"));
+                    break;
+
+                case "logout":
+                    _session.Logout();
+                    break;
+
+                case "openExplorer":
+                    // «Мои файлы» (собственный проводник) подключается ниже; пока ничего не делаем
                     break;
 
                 case "register":
@@ -419,15 +436,51 @@ internal sealed class LockerForm : Form
         ?? Path.Combine(AppContext.BaseDirectory, "ui", "config", "catalog.json");
 
     /// <summary>Читает каталог, оставляет найденное на этом ПК и отдаёт интерфейсу только то, что нужно для показа.</summary>
-    private void LoadCatalog()
+    private List<(string id, string title, string? icon)>? _pinned;
+    private long _catalogVersion = -1;
+    private int _loadingCatalog;
+    private HashSet<string> _blocked = new(StringComparer.OrdinalIgnoreCase); // запрещённые программы с сервера
+
+    /// <summary>
+    /// Каталог берётся с сервера (его правит админ), а если сервер не настроен или недоступен — из файла catalog.json.
+    /// force=false (периодическая проверка): ничего не делаем, пока версия на сервере не изменилась.
+    /// </summary>
+    private void LoadCatalog(bool force = true)
     {
+        if (Interlocked.Exchange(ref _loadingCatalog, 1) == 1) return;
         // Поиск программ по дискам может занять секунды — делаем в фоне, чтобы интерфейс не зависал.
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             try
             {
+                CatalogSnapshot? snap = null;
+                try { snap = await _api.GetCatalogAsync(); }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { /* сервер недоступен: остаёмся на файле/прошлой версии */ }
+
+                IEnumerable<CatalogEntry> entries;
+                long version = -1;
+                HashSet<string>? blocked = null;
+                if (snap is not null)
+                {
+                    if (!force && snap.Version == _catalogVersion) return;
+                    version = snap.Version;
+                    var baseUrl = (_api.Inner as HttpClubApi)?.BaseUrl ?? "";
+                    entries = snap.Items.Select(i => new CatalogEntry
+                    {
+                        Id = i.Id, Title = i.Title, Kind = i.Kind, Group = i.Group, ClubAccount = i.ClubAccount, MinAge = i.MinAge, Pinned = i.Pinned,
+                        Cover = i.Cover is null ? null : (i.Cover.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? i.Cover : baseUrl + i.Cover),
+                        Launch = new LaunchSpec { Paths = i.Paths, Args = i.Args, WorkDir = i.WorkDir },
+                    }).ToList();
+                    blocked = new HashSet<string>(snap.Blocked, StringComparer.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    if (!force) return;
+                    entries = CatalogLoader.Load(CatalogPath());
+                }
+
                 ExeFinder.Reset(); // заново ищем программы: могли установить после прошлой загрузки
-                var resolved = CatalogLoader.Resolve(CatalogLoader.Load(CatalogPath()));
+                var resolved = CatalogLoader.Resolve(entries);
                 var items = resolved.Select(r => new
                 {
                     id = r.Entry.Id,
@@ -437,19 +490,51 @@ internal sealed class LockerForm : Form
                     cover = r.Entry.Cover,
                     clubAccount = r.Entry.ClubAccount ? true : (bool?)null,
                     minAge = r.Entry.MinAge,
+                    pinned = r.Entry.Pinned ? true : (bool?)null,
                 }).ToList();
                 RunOnUi(() =>
                 {
                     _catalog = resolved.ToDictionary(r => r.Entry.Id);
+                    _catalogVersion = version;
+                    if (blocked is not null) _blocked = blocked;
                     Post(new { type = "catalog", items });
+                    _pinned = resolved.Where(r => r.Entry.Pinned).Select(r => (r.Entry.Id, r.Entry.Title, WindowTracker.IconFromPath(r.Path))).ToList();
+                    _taskbar?.SetPinned(_pinned);
                 });
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ClubShell] catalog failed: {ex.Message}");
-                Post(new { type = "catalog", items = Array.Empty<object>() });
+                if (force) Post(new { type = "catalog", items = Array.Empty<object>() });
             }
+            finally { Volatile.Write(ref _loadingCatalog, 0); }
         });
+    }
+
+    /// <summary>Запрещённые программы (список с сервера) закрываем сразу, как только они появились в процессах гостя.</summary>
+    private readonly Dictionary<string, DateTime> _blockedNotified = new(StringComparer.OrdinalIgnoreCase);
+
+    private void EnforceBlocked()
+    {
+        if (_locked || _blocked.Count == 0) return;
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                using (p)
+                {
+                    var exe = p.ProcessName + ".exe";
+                    if (!_blocked.Contains(exe) || p.Id == Environment.ProcessId) continue;
+                    p.Kill(entireProcessTree: true);
+                    if (!_blockedNotified.TryGetValue(exe, out var last) || DateTime.UtcNow - last > TimeSpan.FromSeconds(20))
+                    {
+                        _blockedNotified[exe] = DateTime.UtcNow;
+                        Post(new { type = "notice", text = $"Программа {exe} запрещена в клубе и была закрыта" });
+                    }
+                }
+            }
+            catch (Exception) { /* процесс уже завершился или недоступен */ }
+        }
     }
 
     /// <summary>Запуск строго по id из каталога: путь и аргументы берутся из файла хоста, а не из сообщения интерфейса.</summary>
@@ -525,7 +610,7 @@ internal sealed class LockerForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { SystemTaskbar.Restore(); _commandLink?.Dispose(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _taskbar?.Dispose(); }
+        if (disposing) { SystemTaskbar.Restore(); _commandLink?.Dispose(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _catalogTimer.Dispose(); _blockTimer.Dispose(); _taskbar?.Dispose(); }
         base.Dispose(disposing);
     }
 }

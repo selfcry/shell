@@ -18,5 +18,7 @@ public record NewGuestReq(string Login, string Password, int? Balance, string? B
 public record UpdateGuestReq(string? Password, bool? Banned, string? Birth);
 public record TopUpReq(int Amount, string? Note);
 public record TariffReq(string Id, string Name, int Minutes, int Price, bool NightOnly, string? Zone, bool? Active, int? Sort);
+public record AppReq(string? Id, string? Title, string? Kind, string? Group, List<string>? Paths, string? Args, string? WorkDir, bool? ClubAccount, int? MinAge, bool? Enabled, bool? Pinned, int? Sort);
+public record BlockedReq(string? Process, string? Note);
 public record CommandReq(string Name, string? Text);
 public record AddTimeReq(int Minutes);

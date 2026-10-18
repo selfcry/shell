@@ -6,7 +6,7 @@ import "./styles.css";
 import { onMessage, send } from "./bridge";
 import { el } from "./dom";
 import { icons } from "./icons";
-import type { FromHost, WindowItem } from "./protocol";
+import type { FromHost, PinnedItem, WindowItem } from "./protocol";
 
 // Панель задач: отдельное окно Windows (AppBar) со своей страницей.
 // Слева — кнопка «Рабочий стол» и открытые окна, справа — язык, звук, сеть, часы.
@@ -16,6 +16,7 @@ const app = document.getElementById("app")!;
 // ---------- левая часть ----------
 const deskBtn = el("button", { class: "tb-desk", attrs: { title: "Рабочий стол клуба" } }, [el("span", { html: icons.club }), "Рабочий стол"]);
 deskBtn.addEventListener("click", () => send({ type: "showDesktop" }));
+const pins = el("div", { class: "tb-pins" });
 const list = el("div", { class: "tb-list" });
 const mgrBtn = el("button", { class: "tb-mgr", text: "Диспетчер", attrs: { title: "Диспетчер задач (Ctrl+Shift+Esc)" } });
 mgrBtn.addEventListener("click", () => send({ type: "openTaskManager" }));
@@ -35,7 +36,20 @@ const speedBtn = el("button", { class: "tb-speed", text: "Тест скорос�
 const clock = el("div", { class: "tb-clock" });
 
 const tray = el("div", { class: "tb-tray" }, [mgrBtn, lang, volGroup, el("div", { class: "tb-net" }, [netIcon, netText, pingChip, speedBtn]), clock]);
-app.append(el("div", { class: "tb" }, [deskBtn, list, tray]));
+app.append(el("div", { class: "tb" }, [deskBtn, pins, list, tray]));
+
+// ---------- закреплённые программы ----------
+function renderPins(items: PinnedItem[]): void {
+  pins.replaceChildren(
+    ...items.map((p) => {
+      const b = el("button", { class: "tb-pin", attrs: { title: p.title } });
+      if (p.icon) b.append(el("img", { attrs: { src: p.icon, alt: "", draggable: "false" } }));
+      else b.textContent = p.title.slice(0, 1).toUpperCase();
+      b.addEventListener("click", () => send({ type: "launch", id: p.id }));
+      return b;
+    }),
+  );
+}
 
 // ---------- окна ----------
 let windows: WindowItem[] = [];
@@ -124,6 +138,9 @@ speedBtn.addEventListener("click", () => {
 
 onMessage((msg: FromHost) => {
   switch (msg.type) {
+    case "pinned":
+      renderPins(msg.items);
+      break;
     case "windows":
       windows = msg.items;
       renderWindows();
@@ -152,7 +169,7 @@ onMessage((msg: FromHost) => {
         setNetText(msg.error ?? "Тест не удался");
       } else {
         const f = (v?: number) => (v === undefined ? "—" : v >= 100 ? Math.round(v) : v);
-        setNetText(`↓ ${f(msg.downMbps)}  ↑ ${f(msg.upMbps)} Мбит/с`);
+        setNetText(`↓ ${f(msg.downMbps)}  ↑ ${f(msg.upMbps)} Мбит/с${msg.source ? ` · ${msg.source}` : ""}`);
       }
       resultTimer = window.setTimeout(() => {
         resultTimer = undefined;

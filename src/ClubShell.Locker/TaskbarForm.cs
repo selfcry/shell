@@ -32,6 +32,8 @@ internal sealed class TaskbarForm : Form
     private readonly uint _callbackMsg = RegisterWindowMessage("ClubShell.AppBar");
     private readonly Action _showDesktop;
     private readonly Action _openTaskManager;
+    private readonly Action<string> _launch;
+    private string _pinnedJson = "";
 
     private bool _registered;
     private bool _fullscreenApp;
@@ -44,9 +46,10 @@ internal sealed class TaskbarForm : Form
     /// <summary>Рабочая область изменилась (панель появилась, исчезла или сдвинулась).</summary>
     public event Action? Reserved;
 
-    public TaskbarForm(CoreWebView2Environment env, Action showDesktop, Action openTaskManager)
+    public TaskbarForm(CoreWebView2Environment env, Action showDesktop, Action openTaskManager, Action<string> launch)
     {
         _env = env;
+        _launch = launch;
         _openTaskManager = openTaskManager;
         _showDesktop = showDesktop;
 
@@ -204,6 +207,7 @@ internal sealed class TaskbarForm : Form
             {
                 case "ready":
                     _lastWindowsJson = "";
+                    if (_pinnedJson.Length > 0) PostRaw(_pinnedJson);
                     PostWindows();
                     PostAudio();
                     PostNetwork();
@@ -229,6 +233,10 @@ internal sealed class TaskbarForm : Form
                     _openTaskManager();
                     break;
 
+                case "launch":
+                    _launch(Str(root, "id")); // закреплённая программа: запускает оболочка по коду из каталога
+                    break;
+
                 case "speedTest":
                     _ = RunSpeedTestAsync();
                     break;
@@ -245,6 +253,13 @@ internal sealed class TaskbarForm : Form
             }
         }
         catch (Exception ex) { Debug.WriteLine($"[ClubShell] taskbar bridge error: {ex}"); }
+    }
+
+    /// <summary>Закреплённые программы из каталога (то, что админ отметил «на панели»).</summary>
+    public void SetPinned(IEnumerable<(string id, string title, string? icon)> items)
+    {
+        _pinnedJson = JsonSerializer.Serialize(new { type = "pinned", items = items.Select(i => new { id = i.id, title = i.title, icon = i.icon }) }, Json);
+        if (_web.CoreWebView2 is not null) PostRaw(_pinnedJson);
     }
 
     private void PostWindows()
@@ -278,7 +293,7 @@ internal sealed class TaskbarForm : Form
     private async Task RunSpeedTestAsync()
     {
         var r = await NetworkTest.RunAsync();
-        if (!IsDisposed) Post(new { type = "speedResult", ok = r.Ok, downMbps = r.DownMbps, upMbps = r.UpMbps, pingMs = r.PingMs, error = r.Error });
+        if (!IsDisposed) Post(new { type = "speedResult", ok = r.Ok, downMbps = r.DownMbps, upMbps = r.UpMbps, pingMs = r.PingMs, error = r.Error, source = r.Source });
     }
 
     private void PostNetwork()

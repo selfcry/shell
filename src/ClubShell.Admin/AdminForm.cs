@@ -108,7 +108,7 @@ internal sealed class AdminForm : Form
 
         // Пускаем только админские пути сервера и известные методы: страница не может обратиться ни к чему другому.
         if (!path.StartsWith("/api/admin/", StringComparison.Ordinal) || path.Contains("..") ||
-            method is not ("GET" or "POST" or "PUT" or "DELETE"))
+            method is not ("GET" or "POST" or "PUT" or "DELETE" or "UPLOAD"))
         {
             Post(new { type = "apiResult", id, status = 400, body = "{\"ok\":false,\"error\":\"Недопустимый запрос\"}" });
             return;
@@ -116,6 +116,13 @@ internal sealed class AdminForm : Form
         if (_http is null)
         {
             Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"Не задан адрес сервера или ключ\"}" });
+            return;
+        }
+
+        // UPLOAD: страница просит загрузить обложку. Файл выбирает сам человек в системном окне, страница путей к файлам не видит.
+        if (method == "UPLOAD")
+        {
+            await UploadCoverAsync(id, path);
             return;
         }
 
@@ -130,6 +137,38 @@ internal sealed class AdminForm : Form
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"Сервер недоступен\"}" });
+        }
+    }
+
+    private async Task UploadCoverAsync(int id, string path)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/admin/apps/[a-z0-9_-]{1,32}/cover$"))
+        {
+            Post(new { type = "apiResult", id, status = 400, body = "{\"ok\":false,\"error\":\"Недопустимый запрос\"}" });
+            return;
+        }
+        using var dlg = new OpenFileDialog { Title = "Обложка игры", Filter = "Картинки (*.jpg;*.jpeg;*.png;*.webp)|*.jpg;*.jpeg;*.png;*.webp" };
+        if (dlg.ShowDialog(this) != DialogResult.OK)
+        {
+            Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"cancelled\"}" });
+            return;
+        }
+        var info = new FileInfo(dlg.FileName);
+        if (info.Length > 2_000_000)
+        {
+            Post(new { type = "apiResult", id, status = 400, body = "{\"ok\":false,\"error\":\"Файл больше 2 МБ\"}" });
+            return;
+        }
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, path.TrimStart('/')) { Content = new ByteArrayContent(await File.ReadAllBytesAsync(dlg.FileName)) };
+            req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(info.Extension.ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" });
+            using var resp = await _http!.SendAsync(req);
+            Post(new { type = "apiResult", id, status = (int)resp.StatusCode, body = await resp.Content.ReadAsStringAsync() });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"Не удалось отправить файл\"}" });
         }
     }
 

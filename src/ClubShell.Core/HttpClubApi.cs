@@ -38,6 +38,18 @@ public sealed class HttpClubApi : IClubApi, IDisposable
         return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
     }
 
+    private sealed record CatalogDto(long Version, List<ServerCatalogItem>? Items, List<string>? Blocked);
+
+    public string BaseUrl => _http.BaseAddress!.ToString().TrimEnd('/');
+
+    public async Task<CatalogSnapshot?> GetCatalogAsync()
+    {
+        using var resp = await _http.GetAsync("api/pc/catalog");
+        resp.EnsureSuccessStatusCode();
+        var d = await resp.Content.ReadFromJsonAsync<CatalogDto>(Json) ?? throw new HttpRequestException("empty response");
+        return new CatalogSnapshot(d.Version, d.Items ?? new(), d.Blocked ?? new());
+    }
+
     public async Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)
     {
         var r = await PostAsync<StartDto>("api/pc/session/start", new { username, packageId });

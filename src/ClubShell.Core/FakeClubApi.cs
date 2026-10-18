@@ -41,6 +41,8 @@ public sealed class FakeClubApi : IClubApi
         return Task.FromResult(new LoginResult(true, null, username, 0, Packages));
     }
 
+    public Task<CatalogSnapshot?> GetCatalogAsync() => Task.FromResult<CatalogSnapshot?>(null);
+
     public Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)
     {
         ThrowIfOffline();

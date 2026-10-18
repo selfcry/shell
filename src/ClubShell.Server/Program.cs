@@ -32,6 +32,8 @@ var adminKey = File.ReadAllText(keyFile).Trim();
 var club = new ClubService(db, tz);
 club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", true));
 
+var catalog = new CatalogService(db, dataDir);
+builder.Services.AddSingleton(catalog);
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
 builder.Services.AddSingleton<PcHub>();
@@ -63,6 +65,22 @@ app.MapGet("/health", () => Results.Ok(new { ok = true, time = Db.Now() }));
 // ======================= ПК =======================
 var pc = app.MapGroup("/api/pc");
 
+// Каталог для оболочки: игры/приложения с путями запуска и список запрещённых программ. version меняется при любой правке.
+pc.MapGet("/catalog", (HttpContext ctx) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    return Results.Ok(new
+    {
+        version = catalog.Version,
+        items = catalog.Apps(onlyEnabled: true).Select(a => new
+        {
+            id = a.Id, title = a.Title, kind = a.Kind, group = a.Group, cover = a.Cover is null ? null : "/covers/" + a.Cover,
+            paths = a.Paths, args = a.Args, workDir = a.WorkDir, clubAccount = a.ClubAccount, minAge = a.MinAge, pinned = a.Pinned,
+        }),
+        blocked = catalog.Blocked().Select(b => b.Process),
+    });
+});
+
 pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
@@ -81,6 +99,50 @@ pc.MapPost("/register", (HttpContext ctx, RegisterReq req) =>
     return ok
         ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, packages = tariffs!.Select(Pkg) })
         : Results.Ok(new { ok = false, error });
+});
+
+// Тест скорости до сервера клуба: скачивание (до 25 МБ) и отдача (до 4 МБ). Не чаще раза в 10 секунд с одного ПК.
+var speedLast = new System.Collections.Concurrent.ConcurrentDictionary<long, long>();
+var speedBlock = new byte[64 * 1024];
+Random.Shared.NextBytes(speedBlock); // случайные данные: не сжимаются по дороге и не завышают скорость
+
+bool SpeedAllowed(long pcId, string kind)
+{
+    var key = pcId * 2 + (kind == "down" ? 0 : 1);
+    var now = Db.Now();
+    var last = speedLast.GetOrAdd(key, 0);
+    if (now - last < 10) return false;
+    speedLast[key] = now;
+    return true;
+}
+
+pc.MapGet("/speedtest/down", async (HttpContext ctx, int? bytes) =>
+{
+    var p = AuthPc(ctx); if (p is null) { ctx.Response.StatusCode = 401; return; }
+    if (!SpeedAllowed(p.Id, "down")) { ctx.Response.StatusCode = 429; return; }
+    var total = Math.Clamp(bytes ?? 10_000_000, 1, 25_000_000);
+    ctx.Response.ContentType = "application/octet-stream";
+    ctx.Response.ContentLength = total;
+    var left = total;
+    while (left > 0 && !ctx.RequestAborted.IsCancellationRequested)
+    {
+        var n = Math.Min(left, speedBlock.Length);
+        await ctx.Response.Body.WriteAsync(speedBlock.AsMemory(0, n), ctx.RequestAborted);
+        left -= n;
+    }
+});
+
+pc.MapPost("/speedtest/up", async (HttpContext ctx) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    if (!SpeedAllowed(p.Id, "up")) return Results.StatusCode(429);
+    var limit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = 5_000_000;
+    var buf = new byte[64 * 1024];
+    long total = 0;
+    int r;
+    while ((r = await ctx.Request.Body.ReadAsync(buf, ctx.RequestAborted)) > 0) total += r;
+    return Results.Ok(new { ok = true, bytes = total });
 });
 
 pc.MapPost("/session/start", (HttpContext ctx, StartReq req) =>
@@ -119,6 +181,40 @@ app.Map("/ws/pc", async (HttpContext ctx, PcHub hub) =>
 // ======================= админ =======================
 var admin = app.MapGroup("/api/admin");
 admin.AddEndpointFilter(async (ctx, next) => IsAdmin(ctx.HttpContext) ? await next(ctx) : Unauthorized("Нужен ключ администратора"));
+
+// ---- каталог игр и приложений ----
+object AppDto(AppEntry a) => new
+{
+    id = a.Id, title = a.Title, kind = a.Kind, group = a.Group, cover = a.Cover is null ? null : "/covers/" + a.Cover,
+    paths = a.Paths, args = a.Args, workDir = a.WorkDir, clubAccount = a.ClubAccount, minAge = a.MinAge, enabled = a.Enabled, pinned = a.Pinned, sort = a.Sort,
+};
+admin.MapGet("/apps", () => Results.Ok(catalog.Apps(onlyEnabled: false).Select(AppDto)));
+admin.MapPut("/apps", (AppReq req) =>
+{
+    var r = catalog.Upsert(new AppEntry(req.Id ?? "", req.Title ?? "", req.Kind ?? "game", req.Group, null, req.Paths ?? new(), req.Args, req.WorkDir,
+        req.ClubAccount ?? false, req.MinAge, req.Enabled ?? true, req.Pinned ?? false, req.Sort ?? 0));
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapDelete("/apps/{id}", (string id) => catalog.Delete(id) ? Results.Ok(new { ok = true }) : Results.NotFound(new { ok = false, error = "Не найдено" }));
+admin.MapPost("/apps/{id}/cover", async (string id, HttpContext ctx) =>
+{
+    var limit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = 2_500_000;
+    using var ms = new MemoryStream();
+    await ctx.Request.Body.CopyToAsync(ms, ctx.RequestAborted);
+    var r = catalog.SetCover(id, ms.ToArray());
+    return r.Ok ? Results.Ok(new { ok = true, cover = "/covers/" + r.Error }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapDelete("/apps/{id}/cover", (string id) => catalog.ClearCover(id) ? Results.Ok(new { ok = true }) : Results.NotFound(new { ok = false }));
+
+// ---- запрещённые программы ----
+admin.MapGet("/blocked", () => Results.Ok(catalog.Blocked()));
+admin.MapPost("/blocked", (BlockedReq req) =>
+{
+    var r = catalog.AddBlocked(req.Process ?? "", req.Note);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapDelete("/blocked/{id:long}", (long id) => catalog.RemoveBlocked(id) ? Results.Ok(new { ok = true }) : Results.NotFound(new { ok = false }));
 
 admin.MapGet("/stats", () => Results.Ok(club.Stats()));
 
@@ -197,6 +293,15 @@ admin.MapPost("/sessions/{id:long}/add-time", async (long id, AddTimeReq req, Pc
     if (s is null) return Results.BadRequest(new { ok = false, error = "Нельзя изменить время этого сеанса" });
     await hub.SendAsync(s.PcId, new { type = "command", name = "sync", remainingSec = Math.Max(0, s.Ends - Db.Now()) });
     return Results.Ok(new { ok = true, remainingSec = Math.Max(0, s.Ends - Db.Now()) });
+});
+
+// Обложки игр: имена файлов содержат случайную часть и не меняются, поэтому кэшируются надолго.
+app.MapGet("/covers/{name}", (string name, HttpContext ctx) =>
+{
+    var path = catalog.CoverPath(name);
+    if (path is null) return Results.NotFound();
+    ctx.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    return Results.File(path, name.EndsWith(".png") ? "image/png" : name.EndsWith(".webp") ? "image/webp" : "image/jpeg");
 });
 
 app.Run();

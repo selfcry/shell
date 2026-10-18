@@ -24,6 +24,12 @@ public sealed class SessionManager : IDisposable
         _timer = new System.Threading.Timer(_ => OnSecond(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
+    /// <summary>Гость вышел, не начав сеанс.</summary>
+    public void Logout()
+    {
+        if (!Active) { User = null; Balance = 0; }
+    }
+
     public void SetUser(string user, int balance) { User = user; Balance = balance; }
 
     /// <summary>Баланс изменился на сервере (пополнение или списание администратором).</summary>

@@ -9,6 +9,9 @@ public interface IClubApi
     Task<LoginResult> LoginAsync(string pcId, string username, string password);
     /// <summary>Самостоятельная регистрация гостя на клубном ПК (birth — yyyy-MM-dd). Ответ такой же, как у входа.</summary>
     Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth);
+    /// <summary>Каталог игр/приложений и список запрещённых программ с сервера. null — сервер не настроен (работает файл catalog.json).</summary>
+    Task<CatalogSnapshot?> GetCatalogAsync();
+
     Task<StartResult> StartSessionAsync(string pcId, string username, string packageId);
     Task StopSessionAsync(string pcId, string username);
 

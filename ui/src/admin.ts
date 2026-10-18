@@ -23,7 +23,7 @@ interface ApiReply<T> { status: number; data: T }
 let nextId = 1;
 const pending = new Map<number, (r: { status: number; body: string }) => void>();
 
-function api<T = { ok?: boolean; error?: string }>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<ApiReply<T>> {
+function api<T = { ok?: boolean; error?: string }>(method: "GET" | "POST" | "PUT" | "DELETE" | "UPLOAD", path: string, body?: unknown): Promise<ApiReply<T>> {
   return new Promise((resolve) => {
     const id = nextId++;
     pending.set(id, (r) => {
@@ -93,13 +93,15 @@ async function run(promise: Promise<ApiReply<{ ok?: boolean; error?: string }>>,
 }
 
 // ---------- каркас ----------
-type ViewName = "dashboard" | "pcs" | "guests" | "tariffs" | "sessions";
+type ViewName = "dashboard" | "pcs" | "guests" | "tariffs" | "sessions" | "apps" | "blocked";
 const VIEWS: { id: ViewName; title: string }[] = [
   { id: "dashboard", title: "Дашборд" },
   { id: "pcs", title: "Компьютеры" },
   { id: "guests", title: "Гости" },
   { id: "tariffs", title: "Тарифы" },
   { id: "sessions", title: "Сеансы" },
+  { id: "apps", title: "Игры и приложения" },
+  { id: "blocked", title: "Запреты" },
 ];
 
 let serverUrl = "";
@@ -142,7 +144,7 @@ function go(view: ViewName): void {
 async function render(silent = false): Promise<void> {
   const gen = ++renderGen;
   const views: Record<ViewName, () => Promise<HTMLElement | null>> = {
-    dashboard: viewDashboard, pcs: viewPcs, guests: viewGuests, tariffs: viewTariffs, sessions: viewSessions,
+    dashboard: viewDashboard, pcs: viewPcs, guests: viewGuests, tariffs: viewTariffs, sessions: viewSessions, apps: viewApps, blocked: viewBlocked,
   };
   const node = await views[current]();
   if (gen !== renderGen || !node) return;
@@ -441,6 +443,131 @@ async function viewSessions(): Promise<HTMLElement | null> {
     button("Все", onlyActive ? "" : "on", () => { onlyActive = false; void render(); }),
   ]);
   return el("div", {}, [header("Сеансы", toggle), table(["№", "Гость", "ПК", "Тариф", "Начало", "Конец / осталось", "Цена", ""], rows, onlyActive ? "Сейчас никто не играет" : "Сеансов ещё не было")]);
+}
+
+// ---------- игры и приложения ----------
+interface AppRow { id: string; title: string; kind: "game" | "app"; group?: string | null; cover?: string | null; paths: string[]; args?: string | null; workDir?: string | null; clubAccount: boolean; minAge?: number | null; enabled: boolean; pinned: boolean; sort: number }
+
+async function viewApps(): Promise<HTMLElement | null> {
+  const r = await api<AppRow[]>("GET", "/api/admin/apps");
+  if (r.status !== 200) return connectionProblem(r.status);
+  const rows = r.data.map((a) => [
+    a.cover
+      ? el("img", { class: "ad-thumb", attrs: { src: serverUrl + a.cover, alt: "", draggable: "false" } })
+      : el("div", { class: "ad-thumb ph", text: a.title.slice(0, 2).toUpperCase() }),
+    el("div", {}, [el("b", { text: a.title }), el("div", { class: "ad-muted ad-small", text: [a.kind === "game" ? "Игра" : "Приложение", a.group].filter(Boolean).join(" · ") })]),
+    el("div", { class: "ad-path", text: a.paths[0] + (a.paths.length > 1 ? `  (+${a.paths.length - 1})` : ""), attrs: { title: a.paths.join("\n") } }),
+    el("div", { class: "ad-btnrow" }, [
+      ...(a.minAge ? [badge(`${a.minAge}+`, "warn")] : []),
+      ...(a.clubAccount ? [badge("клубный аккаунт", "ok")] : []),
+      ...(a.pinned ? [badge("на панели")] : []),
+    ]),
+    a.enabled ? badge("включено", "ok") : badge("выключено"),
+    el("div", { class: "ad-btnrow" }, [
+      button("Изменить", "", () => appDialog(a)),
+      button(a.enabled ? "Выключить" : "Включить", "", () => void run(api("PUT", "/api/admin/apps", { ...a, enabled: !a.enabled }), a.enabled ? "Выключено" : "Включено", () => void render())),
+      button("Удалить", "danger", () => confirmBox("Удалить?", `«${a.title}» исчезнет из оболочек всех ПК.`, "Удалить", () => void run(api("DELETE", `/api/admin/apps/${encodeURIComponent(a.id)}`), "Удалено", () => void render()))),
+    ]),
+  ]);
+  return el("div", {}, [
+    header("Игры и приложения", button("Добавить", "primary", () => appDialog())),
+    el("p", { class: "ad-muted ad-note", text: "Список видят гости на всех ПК. Игра показывается, только если на ПК найден хотя бы один из путей запуска. Изменения доходят до оболочек в течение минуты." }),
+    table(["", "Название", "Путь запуска", "Метки", "Статус", ""], rows, "Пока пусто. Нажмите «Добавить»."),
+  ]);
+}
+
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+
+function appDialog(a?: AppRow): void {
+  const editing = !!a;
+  const title = textInput(a?.title ?? "", "text", "Counter-Strike 2");
+  const id = textInput(a?.id ?? "", "text", "cs2 (латиницей, не меняется)");
+  if (editing) id.disabled = true;
+  title.addEventListener("input", () => { if (!editing && !id.dataset.touched) id.value = slug(title.value); });
+  id.addEventListener("input", () => (id.dataset.touched = "1"));
+  const kind = el("select", { class: "ad-input" }, [el("option", { text: "Игра", attrs: { value: "game" } }), el("option", { text: "Приложение", attrs: { value: "app" } })]);
+  kind.value = a?.kind ?? "game";
+  const group = textInput(a?.group ?? "", "text", "Шутеры, MOBA, Общение…");
+  const paths = [0, 1, 2].map((i) => textInput(a?.paths[i] ?? "", "text", i === 0 ? "C:\\Games\\game.exe, steam://rungameid/730 или find:Program.exe" : "Запасной путь (необязательно)"));
+  const args = textInput(a?.args ?? "", "text", "Аргументы запуска (необязательно). Можно {user} и {pc}");
+  const age = el("select", { class: "ad-input" }, ["", "6", "12", "16", "18"].map((v) => el("option", { text: v ? `${v}+` : "Без ограничения", attrs: { value: v } })));
+  age.value = a?.minAge ? String(a.minAge) : "";
+  const sort = textInput(String(a?.sort ?? 0), "number");
+  const chk = (label: string, on: boolean) => {
+    const i = el("input", { attrs: { type: "checkbox" } });
+    i.checked = on;
+    return [i, el("label", { class: "ad-check" }, [i, el("span", { text: label })])] as const;
+  };
+  const [club, clubRow] = chk("Клубный аккаунт (выдаёт RentalGames)", a?.clubAccount ?? false);
+  const [pinned, pinnedRow] = chk("Закрепить на панели задач", a?.pinned ?? false);
+  const [enabled, enabledRow] = chk("Включено", a?.enabled ?? true);
+
+  // обложка: загружается после того, как игра сохранена (нужен её код)
+  const cover = el("img", { class: "ad-cover", attrs: { alt: "", draggable: "false" } });
+  const coverBox = el("div", { class: "ad-cover-box" });
+  function paintCover(url?: string | null): void {
+    coverBox.replaceChildren(url ? Object.assign(cover, { src: serverUrl + url }) : el("div", { class: "ad-cover ph", text: "нет обложки" }));
+  }
+  paintCover(a?.cover);
+  const pick = button("Выбрать картинку…", "", async () => {
+    const r = await api<{ ok?: boolean; error?: string; cover?: string }>("UPLOAD", `/api/admin/apps/${encodeURIComponent(id.value)}/cover`);
+    if (r.status === 0 && r.data.error === "cancelled") return;
+    if (r.status === 200 && r.data.ok) { toast("Обложка загружена"); paintCover(r.data.cover); void render(true); }
+    else toast(r.data.error ?? "Не удалось загрузить", "error");
+  });
+  const unpick = button("Убрать", "", async () => {
+    if (await run(api("DELETE", `/api/admin/apps/${encodeURIComponent(id.value)}/cover`), "Обложка убрана")) { paintCover(null); void render(true); }
+  });
+  pick.disabled = unpick.disabled = !editing;
+  const coverHint = el("div", { class: "ad-muted ad-small", text: editing ? "JPG, PNG или WEBP до 2 МБ, лучше вертикальная 2:3 (600×900)." : "Обложку можно добавить после первого сохранения." });
+
+  const close = modal(editing ? `«${a!.title}»` : "Новая игра или приложение", [
+    el("div", { class: "ad-appform" }, [
+      el("div", {}, [field("Название", title), field("Код", id), el("div", { class: "ad-two" }, [field("Тип", kind), field("Группа", group)]),
+        field("Путь запуска (до 3, берётся первый найденный на ПК)", paths[0]!), paths[1]!, paths[2]!, field("Аргументы", args),
+        el("div", { class: "ad-two" }, [field("Возраст", age), field("Порядок в списке", sort)]), clubRow, pinnedRow, enabledRow]),
+      el("div", { class: "ad-coverside" }, [el("div", { class: "lbl", text: "Обложка" }), coverBox, el("div", { class: "ad-btnrow" }, [pick, unpick]), coverHint]),
+    ]),
+  ], [
+    button("Сохранить", "primary", async () => {
+      const list = paths.map((p) => p.value.trim()).filter(Boolean);
+      const body = {
+        id: id.value.trim(), title: title.value.trim(), kind: kind.value, group: group.value.trim() || null, paths: list, args: args.value.trim() || null,
+        clubAccount: club.checked, minAge: age.value ? Number(age.value) : null, pinned: pinned.checked, enabled: enabled.checked, sort: Number(sort.value) || 0,
+      };
+      const ok = await run(api("PUT", "/api/admin/apps", body), "Сохранено", () => void render());
+      if (!ok) return;
+      close();
+      if (!editing) {
+        const fresh = (await api<AppRow[]>("GET", "/api/admin/apps")).data.find((x) => x.id === body.id);
+        if (fresh) appDialog(fresh); // сразу открываем снова, чтобы можно было добавить обложку
+      }
+    }),
+  ]);
+  (editing ? paths[0]! : title).focus();
+}
+
+// ---------- запрещённые программы ----------
+interface BlockedRow { id: number; process: string; note?: string | null }
+const BLOCK_SUGGESTIONS = ["cheatengine-x86_64.exe", "processhacker.exe", "procexp.exe", "procexp64.exe", "autohotkey.exe", "wireshark.exe", "regedit.exe"];
+
+async function viewBlocked(): Promise<HTMLElement | null> {
+  const r = await api<BlockedRow[]>("GET", "/api/admin/blocked");
+  if (r.status !== 200) return connectionProblem(r.status);
+  const add = async (process: string, note: string) => run(api("POST", "/api/admin/blocked", { process, note }), "Добавлено", () => void render());
+  const proc = textInput("", "text", "program.exe");
+  const note = textInput("", "text", "Заметка (необязательно)");
+  const addBtn = button("Запретить", "primary", () => void add(proc.value.trim(), note.value.trim()));
+  proc.addEventListener("keydown", (e) => (e as KeyboardEvent).key === "Enter" && addBtn.click());
+  const have = new Set(r.data.map((b) => b.process.toLowerCase()));
+  const rows = r.data.map((b) => [el("b", { text: b.process }), b.note ?? "", button("Убрать", "", () => void run(api("DELETE", `/api/admin/blocked/${b.id}`), "Убрано", () => void render()))]);
+  return el("div", {}, [
+    header("Запрещённые программы"),
+    el("p", { class: "ad-muted ad-note", text: "Эти программы закрываются сразу после запуска на ПК гостей (в сеансе), гость видит сообщение. Укажите имя процесса, например cheatengine-x86_64.exe. Изменения доходят до ПК в течение минуты." }),
+    el("div", { class: "ad-addrow" }, [proc, note, addBtn]),
+    el("div", { class: "ad-chips" }, [el("span", { class: "ad-muted ad-small", text: "Популярные:" }), ...BLOCK_SUGGESTIONS.filter((s) => !have.has(s)).map((s) => button(s, "ghost", () => void add(s, "")))]),
+    table(["Процесс", "Заметка", ""], rows, "Список пуст"),
+  ]);
 }
 
 // ---------- подключение ----------

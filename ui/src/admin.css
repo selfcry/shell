@@ -103,3 +103,23 @@ body.ad-page .backdrop { display: none; }
 .ad-connect-box .ad-btn { width: 100%; padding: 13px; margin-top: 4px; }
 .ad-connect-err { min-height: 18px; color: var(--danger); font-size: 13px; margin-bottom: 8px; }
 .ad-problem { padding: 60px 20px; text-align: center; }
+
+/* Игры и приложения, запреты */
+.ad-thumb { width: 44px; height: 66px; border-radius: 8px; object-fit: cover; background: #1a1a1a; display: block; }
+.ad-thumb.ph { display: grid; place-items: center; font: 700 13px "Russo One", Inter, sans-serif; color: #888; border: 1px solid var(--line); }
+.ad-small { font-size: 12px; }
+.ad-note { margin: -8px 0 14px; max-width: 760px; }
+.ad-path { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
+.ad-appform { display: grid; grid-template-columns: 1fr 190px; gap: 22px; }
+.ad-appform .ad-input { margin-bottom: 8px; }
+.ad-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ad-coverside { display: flex; flex-direction: column; gap: 10px; }
+.ad-cover-box { width: 150px; }
+.ad-cover { width: 150px; height: 225px; border-radius: 12px; object-fit: cover; display: block; background: #151515; border: 1px solid var(--line); }
+.ad-cover.ph { display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.ad-addrow { display: flex; gap: 10px; margin-bottom: 12px; }
+.ad-addrow .ad-input:first-child { max-width: 280px; }
+.ad-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+select.ad-input { appearance: auto; }
+@media (max-width: 900px) { .ad-appform { grid-template-columns: 1fr; } }
+.ad-table td:last-child .ad-btnrow { flex-wrap: nowrap; }

@@ -148,6 +148,18 @@ internal sealed class WindowTracker
         return url;
     }
 
+    /// <summary>Значок из exe по пути (для закреплённых программ). null — путь не exe или значок не получился.</summary>
+    public static string? IconFromPath(string path)
+    {
+        try
+        {
+            if (!path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return null;
+            using var icon = Icon.ExtractAssociatedIcon(path);
+            return icon is null ? null : ToDataUrl(icon);
+        }
+        catch (Exception) { return null; }
+    }
+
     private static string ToDataUrl(Icon icon)
     {
         using var bmp = icon.ToBitmap();

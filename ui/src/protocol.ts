@@ -18,6 +18,7 @@ export interface CatalogItem {
   cover?: string; // относительный адрес обложки 2:3; если нет — рисуется заглушка
   clubAccount?: boolean; // выдаётся клубный аккаунт
   minAge?: number; // возрастное ограничение
+  pinned?: boolean; // закреплено на панели задач
 }
 
 /** Процесс в диспетчере задач. app = у процесса есть окно (показывается в «Приложениях»). */
@@ -43,8 +44,15 @@ export interface WindowItem {
 // ---- админ-панель (ClubShell.Admin): страница не знает ключа, запросы к серверу делает хост ----
 export interface ApiResultBody { status: number; body: string }
 
+/** Закреплённая программа на панели задач (браузер, Discord, Telegram…). */
+export interface PinnedItem {
+  id: string;
+  title: string;
+  icon?: string; // data:image/png;base64,… значок из exe
+}
+
 export type ToHost =
-  | { type: "api"; id: number; method: "GET" | "POST" | "PUT" | "DELETE"; path: string; body?: unknown }
+  | { type: "api"; id: number; method: "GET" | "POST" | "PUT" | "DELETE" | "UPLOAD"; path: string; body?: unknown } // UPLOAD: хост сам откроет выбор файла и отправит картинку (обложка)
   | { type: "saveSettings"; serverUrl: string; key: string }
   | { type: "ready" }
   | { type: "activateWindow"; id: string } // кликнули по окну: показать / свернуть, если оно уже активно
@@ -58,6 +66,8 @@ export type ToHost =
   | { type: "register"; username: string; password: string; birth: string } // birth: yyyy-MM-dd
   | { type: "startSession"; packageId: string }
   | { type: "stopSession" }
+  | { type: "logout" } // гость вышел, не начав сеанс
+  | { type: "openExplorer" } // открыть «Мои файлы»
   | { type: "launch"; id: string }
   | { type: "setVolume"; value: number } // 0..100
   | { type: "setMute"; muted: boolean }
@@ -81,6 +91,7 @@ export type FromHost =
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }
   | { type: "sessionEnded"; reason: string }
+  | { type: "pinned"; items: PinnedItem[] }
   | { type: "balance"; balance: number } // баланс гостя изменился на сервере (пополнение/списание)
   | { type: "notice"; text: string } // сообщение от администратора
   | { type: "rebooting"; test: boolean } // сеанс завершён: ПК перезагружается и чистится (test — только имитация)
@@ -91,5 +102,5 @@ export type FromHost =
   | { type: "network"; online: boolean; name?: string; speedMbps?: number }
   | { type: "processes"; items: ProcessItem[]; cpu: number; memUsedMb: number; memTotalMb: number }
   | { type: "ping"; ms: number | null } // задержка до узла; null — узел не отвечает
-  | { type: "speedResult"; ok: boolean; downMbps?: number; upMbps?: number; pingMs?: number | null; error?: string }
+  | { type: "speedResult"; ok: boolean; downMbps?: number; upMbps?: number; pingMs?: number | null; error?: string; source?: string }
   | { type: "adminExitResult"; ok: boolean };
