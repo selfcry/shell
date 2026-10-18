@@ -44,6 +44,18 @@ export interface WindowItem {
 // ---- админ-панель (ClubShell.Admin): страница не знает ключа, запросы к серверу делает хост ----
 export interface ApiResultBody { status: number; body: string }
 
+/** Запись в проводнике «Мои файлы». */
+export interface FsEntry { name: string; isDir: boolean; size: number; modified: number }
+export interface FsRoot { name: string; path: string }
+
+/** Окно в переключателе Alt+Tab. */
+export interface SwitcherItem {
+  id: string;
+  title: string;
+  exe?: string;
+  icon?: string;
+}
+
 /** Закреплённая программа на панели задач (браузер, Discord, Telegram…). */
 export interface PinnedItem {
   id: string;
@@ -67,6 +79,8 @@ export type ToHost =
   | { type: "startSession"; packageId: string }
   | { type: "stopSession" }
   | { type: "logout" } // гость вышел, не начав сеанс
+  | { type: "fs"; id: number; op: "roots" | "list" | "open" | "mkdir" | "rename" | "delete" | "copy" | "move"; path?: string; name?: string; dest?: string }
+  | { type: "closeExplorer" }
   | { type: "openExplorer" } // открыть «Мои файлы»
   | { type: "launch"; id: string }
   | { type: "setVolume"; value: number } // 0..100
@@ -91,7 +105,10 @@ export type FromHost =
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }
   | { type: "sessionEnded"; reason: string }
+  | { type: "fsResult"; id: number; ok: boolean; error?: string; roots?: FsRoot[]; path?: string; entries?: FsEntry[] }
   | { type: "pinned"; items: PinnedItem[] }
+  | { type: "switcher"; items: SwitcherItem[]; selected: number }
+  | { type: "select"; selected: number }
   | { type: "balance"; balance: number } // баланс гостя изменился на сервере (пополнение/списание)
   | { type: "notice"; text: string } // сообщение от администратора
   | { type: "rebooting"; test: boolean } // сеанс завершён: ПК перезагружается и чистится (test — только имитация)

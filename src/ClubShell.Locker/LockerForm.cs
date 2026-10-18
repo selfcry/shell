@@ -39,6 +39,8 @@ internal sealed class LockerForm : Form
     private readonly System.Windows.Forms.Timer _blockTimer = new() { Interval = 2000 };
     private TaskbarForm? _taskbar;
     private TaskManagerForm? _taskMgr;
+    private SwitcherForm? _switcher;
+    private ExplorerForm? _explorer;
     private ServerCommandLink? _commandLink; // только в тестовом режиме с настоящим сервером
     private Dictionary<string, ResolvedEntry> _catalog = new();
 
@@ -81,6 +83,9 @@ internal sealed class LockerForm : Form
         _catalogTimer.Tick += (_, _) => LoadCatalog(force: false);
         _blockTimer.Tick += (_, _) => EnforceBlocked();
         _status.Tick += async (_, _) => { if (!_locked) SystemTaskbar.Hide(); CheckService(); await SendStatusAsync(); };
+        _hook.TabPressed += back => RunOnUi(() => { if (_locked) return; _switcher?.Step(back); _hook.SwitcherOpen = _switcher?.IsOpen ?? false; });
+        _hook.AltReleased += () => RunOnUi(() => { _switcher?.Commit(); _hook.SwitcherOpen = false; });
+        _hook.EscPressed += () => RunOnUi(() => { _switcher?.Cancel(); _hook.SwitcherOpen = false; });
         _service.MessageReceived += msg => RunOnUi(() => OnServiceMessage(msg));
 
         SetMode(locked: true);
@@ -97,6 +102,8 @@ internal sealed class LockerForm : Form
     {
         _locked = locked;
         _hook.Enabled = locked && !_test;
+        _hook.SwitcherMode = !locked; // в сеансе Alt+Tab открывает наш переключатель
+        if (locked) { _hook.SwitcherOpen = false; _switcher?.Cancel(); _explorer?.HideExplorer(); }
         var screen = Screen.PrimaryScreen!;
         if (locked)
         {
@@ -275,6 +282,9 @@ internal sealed class LockerForm : Form
         await _web.EnsureCoreWebView2Async(env);
 
         // Панель задач — отдельное окно на том же профиле WebView2.
+        _explorer = new ExplorerForm(env, name => _blocked.Contains(name));
+        _switcher = new SwitcherForm(env);
+        _ = _switcher.PrepareAsync(); // заранее: Alt+Tab должен открываться мгновенно
         _taskMgr = new TaskManagerForm(env);
         _ = _taskMgr.PrepareAsync(); // заранее, чтобы диспетчер открывался сразу
         _taskbar = new TaskbarForm(env, ShowDesktop, () => _taskMgr.Toggle(), id => Launch(id));
@@ -335,7 +345,7 @@ internal sealed class LockerForm : Form
                     break;
 
                 case "openExplorer":
-                    // «Мои файлы» (собственный проводник) подключается ниже; пока ничего не делаем
+                    if (!_locked) _explorer?.ShowExplorer(); // только в сеансе
                     break;
 
                 case "register":
@@ -610,7 +620,7 @@ internal sealed class LockerForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { SystemTaskbar.Restore(); _commandLink?.Dispose(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _catalogTimer.Dispose(); _blockTimer.Dispose(); _taskbar?.Dispose(); }
+        if (disposing) { SystemTaskbar.Restore(); _explorer?.Dispose(); _switcher?.Dispose(); _commandLink?.Dispose(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _catalogTimer.Dispose(); _blockTimer.Dispose(); _taskbar?.Dispose(); }
         base.Dispose(disposing);
     }
 }

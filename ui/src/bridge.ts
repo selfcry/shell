@@ -15,7 +15,7 @@ const emit = (msg: FromHost) => listeners.forEach((l) => l(msg));
 
 // В WebView2 говорим с настоящим хостом, в браузере (npm run dev) — с макетом.
 // Страница панели задач (taskbar.html) — отдельное окно со своим каналом, поэтому у неё свой макет.
-const role = location.pathname.includes("taskbar") ? "taskbar" : location.pathname.includes("taskmgr") ? "taskmgr" : location.pathname.includes("admin") ? "admin" : "shell";
+const role = location.pathname.includes("taskbar") ? "taskbar" : location.pathname.includes("taskmgr") ? "taskmgr" : location.pathname.includes("admin") ? "admin" : location.pathname.includes("explorer") ? "explorer" : "shell";
 const mock = webview ? null : new MockHost(emit, role);
 
 if (webview) {

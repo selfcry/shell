@@ -10,7 +10,8 @@ namespace ClubShell.Locker;
 internal sealed class KeyboardHook : IDisposable
 {
     private const int WH_KEYBOARD_LL = 13;
-    private const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104;
+    private const int WM_KEYDOWN = 0x0100, WM_SYSKEYDOWN = 0x0104, WM_KEYUP = 0x0101, WM_SYSKEYUP = 0x0105;
+    private const int VK_MENU = 0x12, VK_LMENU = 0xA4, VK_RMENU = 0xA5, VK_SHIFT = 0x10;
     private const int VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_F4 = 0x73, VK_LWIN = 0x5B, VK_RWIN = 0x5C, VK_CONTROL = 0x11;
     private const int LLKHF_ALTDOWN = 0x20;
 
@@ -31,6 +32,17 @@ internal sealed class KeyboardHook : IDisposable
     /// <summary>Блокировать ли клавиши (true в режиме блокировки, false во время сессии).</summary>
     public bool Enabled { get; set; }
 
+    /// <summary>
+    /// Режим сеанса: клавиши свободны, но Alt+Tab перехватывается и вместо системного окна показывается наше.
+    /// TabPressed(true) — Alt+Shift+Tab (назад), AltReleased — Alt отпущен (выбор сделан), EscPressed — отмена.
+    /// События приходят из потока хука: подписчик сразу переходит в поток интерфейса и не блокирует его.
+    /// </summary>
+    public bool SwitcherMode { get; set; }
+    public bool SwitcherOpen { get; set; }
+    public event Action<bool>? TabPressed;
+    public event Action? AltReleased;
+    public event Action? EscPressed;
+
     public KeyboardHook()
     {
         _proc = Callback;
@@ -40,6 +52,19 @@ internal sealed class KeyboardHook : IDisposable
 
     private nint Callback(int nCode, nint wParam, nint lParam)
     {
+        if (nCode >= 0 && SwitcherMode && !Enabled)
+        {
+            var k = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+            var down = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+            var up = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
+            if (down && k.vkCode == VK_TAB && (k.flags & LLKHF_ALTDOWN) != 0)
+            {
+                TabPressed?.Invoke((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+                return 1;
+            }
+            if (SwitcherOpen && down && k.vkCode == VK_ESCAPE) { EscPressed?.Invoke(); return 1; }
+            if (SwitcherOpen && up && k.vkCode is VK_MENU or VK_LMENU or VK_RMENU) AltReleased?.Invoke(); // Alt пропускаем дальше как обычно
+        }
         if (nCode >= 0 && Enabled && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN))
         {
             var k = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);

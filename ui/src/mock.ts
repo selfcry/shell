@@ -26,7 +26,7 @@ export class MockHost {
     { id: "3", title: "Google Chrome — Мираж PRO", exe: "chrome.exe", active: false, minimized: true },
   ];
 
-  constructor(private emit: (m: FromHost) => void, private role: "shell" | "taskbar" | "taskmgr" | "admin" = "shell") {}
+  constructor(private emit: (m: FromHost) => void, private role: "shell" | "taskbar" | "taskmgr" | "admin" | "explorer" = "shell") {}
 
   private procs = [
     { pid: 4120, name: "cs2.exe", title: "Counter-Strike 2", cpu: 31, memMb: 4210, app: true },
@@ -106,6 +106,7 @@ export class MockHost {
     if (this.role === "taskbar") return this.handleTaskbar(msg);
     if (this.role === "taskmgr") return this.handleTaskMgr(msg);
     if (this.role === "admin") return handleAdmin(msg, this.emit);
+    if (this.role === "explorer") return handleExplorer(msg, this.emit);
     switch (msg.type) {
       case "ready":
         this.emit({ type: "config", pcName: "PC-01", zone: "ARENA" });
@@ -324,4 +325,36 @@ function handleAdmin(msg: ToHost, emit: (m: FromHost) => void): void {
     return reply({ ok: true });
   }
   return reply({ ok: true, delivered: true, remainingSec: 3600 });
+}
+
+
+// ---------- макет файлов гостя (только для разработки в браузере) ----------
+const fsTree: Record<string, { name: string; isDir: boolean; size: number; modified: number }[]> = {
+  "C:/Users/guest/Downloads": [
+    { name: "Установщики", isDir: true, size: 0, modified: 1760000000 },
+    { name: "report.pdf", isDir: false, size: 2_400_000, modified: 1760100000 },
+    { name: "setup-discord.exe", isDir: false, size: 94_000_000, modified: 1760200000 },
+    { name: "фото.png", isDir: false, size: 820_000, modified: 1760300000 },
+  ],
+  "C:/Users/guest/Downloads/Установщики": [{ name: "readme.txt", isDir: false, size: 1200, modified: 1760000100 }],
+  "C:/Users/guest/Documents": [{ name: "Курсовая.docx", isDir: false, size: 56_000, modified: 1760400000 }],
+  "C:/Users/guest/Desktop": [],
+};
+
+function handleExplorer(msg: ToHost, emit: (m: FromHost) => void): void {
+  if (msg.type !== "fs") return;
+  const reply = (r: Partial<Extract<FromHost, { type: "fsResult" }>>): void => {
+    window.setTimeout(() => emit({ type: "fsResult", id: msg.id, ok: true, ...r }), 80);
+  };
+  if (msg.op === "roots") return reply({ roots: [
+    { name: "Загрузки", path: "C:/Users/guest/Downloads" }, { name: "Документы", path: "C:/Users/guest/Documents" }, { name: "Рабочий стол", path: "C:/Users/guest/Desktop" }, { name: "Флешка (E:)", path: "E:/" } ] });
+  if (msg.op === "list") return fsTree[msg.path ?? ""] ? reply({ path: msg.path, entries: fsTree[msg.path!] }) : reply({ ok: true, path: msg.path, entries: [] });
+  if (msg.op === "mkdir" && msg.path) { (fsTree[msg.path] ??= []).unshift({ name: msg.name ?? "Новая папка", isDir: true, size: 0, modified: Date.now() / 1000 }); return reply({}); }
+  if (msg.op === "delete" && msg.path) {
+    const i = msg.path.lastIndexOf("/");
+    const dir = msg.path.slice(0, i);
+    fsTree[dir] = (fsTree[dir] ?? []).filter((e) => e.name !== msg.path!.slice(i + 1));
+    return reply({});
+  }
+  return reply({});
 }

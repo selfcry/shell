@@ -57,6 +57,14 @@ internal sealed class WindowTracker
         else SetForegroundWindow(h);
     }
 
+    /// <summary>Вывести окно вперёд (в отличие от Activate, активное окно не сворачивается): для переключателя Alt+Tab.</summary>
+    public void Focus(string id)
+    {
+        if (!TryGet(id, out var h)) return;
+        if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+        SetForegroundWindow(h);
+    }
+
     public void Close(string id)
     {
         if (TryGet(id, out var h)) PostMessage(h, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);

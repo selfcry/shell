@@ -14,6 +14,8 @@ export default defineConfig({
         taskbar: resolve(__dirname, "taskbar.html"),
         taskmgr: resolve(__dirname, "taskmgr.html"),
         admin: resolve(__dirname, "admin.html"),
+        switcher: resolve(__dirname, "switcher.html"),
+        explorer: resolve(__dirname, "explorer.html"),
       },
     },
   },

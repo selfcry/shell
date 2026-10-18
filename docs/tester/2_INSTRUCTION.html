@@ -91,23 +91,21 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <label><input type="radio" name="r2.2" value="-"> Не работает</label>
 <label><input type="radio" name="r2.2" value="?"> Странно / не понял</label>
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
-<div class="step" data-id="2.3" data-title="Вход и выбор тарифа">
-<h3>2.3. Вход и выбор тарифа</h3>
+<div class="step" data-id="2.3" data-title="Вход: сразу главный экран">
+<h3>2.3. Вход: сразу главный экран</h3>
 <div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Логин <code>demo</code>, пароль <code>demo</code> → <b>Войти</b>.</li></ol></div>
-<div><div class="lbl exp">Что должно получиться</div><ul><li>Экран «Привет, demo», баланс <b>600 ₽</b>. Четыре тарифа: 1 час, 3 часа, 5 часов, Ночь.</li><li>«Ночь» серая и не нажимается (днём доступна только с 22:00 до 08:00).</li></ul></div></div><figure class="small"><img src="images/shell-4-tariffs.jpg" alt=""></figure>
+<div><div class="lbl exp">Что должно получиться</div><ul><li><b>Сразу открывается главный экран</b> (не выбор времени): слева колонка значков, сверху вкладки «Игры» / «Приложения», справа карточки «Профиль» (demo), «Баланс» (600 ₽), «Сеанс: Не начат» с кнопкой <b>Выбрать тариф</b>.</li><li>Сверху справа: «Нет активного сеанса» и оранжевая кнопка <b>Купить время</b>. Карточки игр видны сразу.</li></ul></div></div><figure class="small"><img src="images/home-1-before-session.jpg" alt=""></figure>
 <div class="res"><label><input type="radio" name="r2.3" value="+"> Работает</label>
 <label><input type="radio" name="r2.3" value="-"> Не работает</label>
 <label><input type="radio" name="r2.3" value="?"> Странно / не понял</label>
-<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
-<div class="step" data-id="2.4" data-title="Начать сеанс">
-<h3>2.4. Начать сеанс</h3>
-<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите плитку <b>1 час (140 ₽)</b>.</li></ol></div>
-<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается рабочий стол: сверху вкладки «Игры» / «Приложения», справа карточка гостя <b>demo</b> с таймером около <b>59:59</b> и балансом 460 ₽.</li><li>Внизу тонкая панель задач. Всё выглядит целым, ничего не налезает.</li></ul></div></div><figure class="small"><img src="images/shell-5-desktop.jpg" alt=""></figure>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="2.4" data-title="Купить время и начать сеанс">
+<h3>2.4. Купить время и начать сеанс</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите на любую карточку игры (например, Counter-Strike 2).</li><li>В открывшемся окне «Выберите тариф» нажмите <b>1 час (140 ₽)</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Без времени игра не запускается: появляется сообщение «Сначала выберите тариф» и окно с тарифами (недоступные по деньгам или времени суток серые).</li><li>После выбора окно закрывается, справа в «Сеансе» идёт таймер около <b>59:59</b> с полосой прогресса, баланс стал 460 ₽, сверху «Сеанс идёт · 59:59». Внизу появляется панель задач.</li></ul></div></div><figure class="small"><img src="images/home-3-session.jpg" alt=""></figure>
 <div class="res"><label><input type="radio" name="r2.4" value="+"> Работает</label>
 <label><input type="radio" name="r2.4" value="-"> Не работает</label>
 <label><input type="radio" name="r2.4" value="?"> Странно / не понял</label>
-<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
-<div class="step" data-id="2.5" data-title="Сеанс виден в админке">
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="2.5" data-title="Сеанс виден в админке">
 <h3>2.5. Сеанс виден в админке</h3>
 <div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Перейдите в админку → <b>Компьютеры</b>.</li><li>Затем <b>Сеансы</b>, затем <b>Дашборд</b>.</li></ol></div>
 <div><div class="lbl exp">Что должно получиться</div><ul><li>VM-PC-01 стала <b>оранжевой</b>, на ней видны <b>demo</b> и оставшееся время.</li><li>В «Сеансах» есть активный сеанс demo. На Дашборде «Выручка сегодня» выросла на 140 ₽, «Идут сеансы» = 1.</li></ul></div></div><figure class="small"><img src="images/admin-6-sessions.jpg" alt=""></figure>
@@ -153,14 +151,14 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <div class="step" data-id="4.1" data-title="Регистрация">
 <h3>4.1. Регистрация</h3>
 <div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В оболочке: <b>Пробел</b> → <b>Нет аккаунта? Зарегистрироваться</b>.</li><li>Заполните: Логин <code>test1</code>, Пароль <code>secret123</code>, Повторите пароль <code>secret123</code>, Дата рождения (любая, например 01.01.2000), поставьте галочку «Согласен…».</li><li>Нажмите <b>Зарегистрироваться</b>.</li></ol></div>
-<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается выбор тарифа, баланс <b>0 ₽</b>, все платные тарифы серые (не хватает средств).</li></ul></div></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается главный экран, баланс <b>0 ₽</b>. В окне «Выбрать тариф» (кнопка «Купить время») все платные тарифы серые: не хватает средств.</li></ul></div></div>
 <div class="res"><label><input type="radio" name="r4.1" value="+"> Работает</label>
 <label><input type="radio" name="r4.1" value="-"> Не работает</label>
 <label><input type="radio" name="r4.1" value="?"> Странно / не понял</label>
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
 <div class="step" data-id="4.2" data-title="Ошибки регистрации">
 <h3>4.2. Ошибки регистрации</h3>
-<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите <b>Выйти</b>, снова пробел → «Нет аккаунта?». Проверьте по очереди: тот же логин <code>test1</code>; пароль короче 6 символов; разные пароли; без даты рождения; без галочки.</li></ol></div>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Выйдите (значок выключения слева внизу), снова пробел → «Нет аккаунта?». Проверьте по очереди: тот же логин <code>test1</code>; пароль короче 6 символов; разные пароли; без даты рождения; без галочки.</li></ol></div>
 <div><div class="lbl exp">Что должно получиться</div><ul><li>Каждый раз понятное сообщение красным (например, «Этот логин уже занят», «Пароли не совпадают»). Программа не вылетает.</li></ul></div></div>
 <div class="res"><label><input type="radio" name="r4.2" value="+"> Работает</label>
 <label><input type="radio" name="r4.2" value="-"> Не работает</label>
@@ -184,8 +182,8 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
 <div class="step" data-id="4.4a" data-title="Баланс обновляется сам">
 <h3>4.4a. Баланс обновляется сам</h3>
-<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В оболочке войдите гостем <b>test1</b> и <b>останьтесь на экране выбора тарифа</b>.</li><li>В админке у test1 нажмите <b>Пополнить</b> на <code>300</code>.</li><li>Посмотрите на оболочку. Потом начните сеанс «1 час» и пополните ещё раз на 100.</li></ol></div>
-<div><div class="lbl exp">Что должно получиться</div><ul><li>Через 1–2 секунды в оболочке сумма «Баланс» выросла, тарифы, на которые раньше не хватало, стали доступны, а надпись «не хватает средств» пропала.</li><li>В сеансе в карточке гостя вверху («Баланс … ₽») новая сумма появилась без перезахода.</li></ul></div></div>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В оболочке войдите гостем <b>test1</b> и <b>останьтесь на главном экране без сеанса</b>, откройте «Купить время».</li><li>В админке у test1 нажмите <b>Пополнить</b> на <code>300</code>.</li><li>Посмотрите на оболочку. Потом начните сеанс «1 час» и пополните ещё раз на 100.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Через 1–2 секунды в оболочке сумма «Баланс» выросла; в окне тарифов те, на которые раньше не хватало, стали доступны, а надпись «не хватает средств» пропала.</li><li>В сеансе в карточке «Баланс» справа новая сумма появилась без перезахода.</li></ul></div></div>
 <div class="res"><label><input type="radio" name="r4.4a" value="+"> Работает</label>
 <label><input type="radio" name="r4.4a" value="-"> Не работает</label>
 <label><input type="radio" name="r4.4a" value="?"> Странно / не понял</label>
@@ -267,7 +265,7 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
 <div class="step" data-id="6.5" data-title="Завершение сеанса гостем">
 <h3>6.5. Завершение сеанса гостем</h3>
-<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите значок питания справа вверху (рядом с таймером).</li></ol></div>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите кнопку <b>Завершить сеанс</b> в карточке «Сеанс» справа (или значок выключения слева внизу).</li></ol></div>
 <div><div class="lbl exp">Что должно получиться</div><ul><li>Появляется окно «Завершить сеанс?» с текстом про перезагрузку и удаление файлов, кнопки <b>Остаться</b> и <b>Завершить сеанс</b>. «Остаться» закрывает окно, «Завершить сеанс» возвращает на заставку.</li></ul></div></div>
 <div class="res"><label><input type="radio" name="r6.5" value="+"> Работает</label>
 <label><input type="radio" name="r6.5" value="-"> Не работает</label>
@@ -291,20 +289,78 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <label><input type="radio" name="r7.2" value="?"> Странно / не понял</label>
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
 </section>
+<section><h2><span class="num">8</span>Новое: игры из админки, запреты, Alt+Tab, «Мои файлы»</h2>
+<figure><img src="images/admin-7-apps.jpg" alt="Вкладка «Игры и приложения» в админке"><figcaption>Админка → «Игры и приложения»</figcaption></figure><div class="step" data-id="8.1" data-title="Добавить игру из админки">
+<h3>8.1. Добавить игру из админки</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Админка → <b>Игры и приложения</b> → <b>Добавить</b>.</li><li>Название <code>Блокнот</code>, тип «Приложение», путь запуска <code>C:\Windows\System32\notepad.exe</code> → <b>Сохранить</b>.</li><li>Подождите до минуты или выйдите и войдите в оболочку заново, откройте вкладку «Приложения».</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В списке появилась карточка «Блокнот»; в сеансе по нажатию открывается Блокнот.</li><li>Если путь не существует на этом ПК, карточка не показывается — это правильно.</li></ul></div></div><figure class="small"><img src="images/admin-8-app-dialog.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r8.1" value="+"> Работает</label>
+<label><input type="radio" name="r8.1" value="-"> Не работает</label>
+<label><input type="radio" name="r8.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.2" data-title="Обложка игры">
+<h3>8.2. Обложка игры</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В админке у «Блокнота» нажмите <b>Изменить</b> → справа <b>Выбрать картинку…</b> → выберите любую JPG/PNG (до 2 МБ) → закройте окно.</li><li>Через минуту (или после перезахода) посмотрите карточку в оболочке.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>На карточке вместо букв ваша картинка. «Убрать» возвращает буквенную заглушку.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.2" value="+"> Работает</label>
+<label><input type="radio" name="r8.2" value="-"> Не работает</label>
+<label><input type="radio" name="r8.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.3" data-title="Закреплённые программы на панели задач">
+<h3>8.3. Закреплённые программы на панели задач</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В админке отметьте у приложения галочку <b>Закрепить на панели задач</b> (по умолчанию так отмечены «Браузер», Discord, Telegram).</li><li>Начните сеанс и посмотрите на панель задач внизу слева.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Рядом с «Рабочий стол» есть квадратные значки закреплённых программ (только тех, что установлены на ПК). Нажатие на значок запускает программу.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.3" value="+"> Работает</label>
+<label><input type="radio" name="r8.3" value="-"> Не работает</label>
+<label><input type="radio" name="r8.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.4" data-title="Запрещённые программы">
+<h3>8.4. Запрещённые программы</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Админка → <b>Запреты</b> → в поле впишите <code>notepad.exe</code> → <b>Запретить</b>. Подождите до минуты.</li><li>В сеансе откройте Блокнот.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Блокнот закрывается сразу (в течение 2 секунд), в оболочке появляется сообщение «Программа notepad.exe запрещена в клубе и была закрыта».</li><li>После «Убрать» в админке Блокнот снова запускается.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.4" value="+"> Работает</label>
+<label><input type="radio" name="r8.4" value="-"> Не работает</label>
+<label><input type="radio" name="r8.4" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.5" data-title="Избранное и «Недавно запускали»">
+<h3>8.5. Избранное и «Недавно запускали»</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Наведите на карточку игры → нажмите сердечко в углу. Выше появится фильтр <b>Избранное</b>.</li><li>Запустите две-три игры/приложения.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Фильтр «Избранное» показывает только отмеченные. Справа в карточке «Недавно запускали» список последних запусков, нажатие запускает снова. После нового входа тем же гостем избранное осталось.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.5" value="+"> Работает</label>
+<label><input type="radio" name="r8.5" value="-"> Не работает</label>
+<label><input type="radio" name="r8.5" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.6" data-title="Свой Alt+Tab">
+<h3>8.6. Свой Alt+Tab</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В сеансе откройте два-три окна (Блокнот, калькулятор).</li><li>Нажмите и держите <b>Alt</b>, нажимайте <b>Tab</b>.</li><li>Отпустите Alt. Потом снова Alt+Tab и нажмите <b>Esc</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>По центру экрана плашка с большими значками окон, выбранный подсвечен оранжевым, снизу его название. Tab листает по кругу, Alt+Shift+Tab назад.</li><li>После отпускания Alt окно выходит вперёд; Esc закрывает плашку без переключения.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.6" value="+"> Работает</label>
+<label><input type="radio" name="r8.6" value="-"> Не работает</label>
+<label><input type="radio" name="r8.6" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.7" data-title="«Мои файлы» (свой проводник)">
+<h3>8.7. «Мои файлы» (свой проводник)</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В сеансе слева нажмите значок папки (или «Файлы доступны во время сеанса» без сеанса).</li><li>В «Загрузках» нажмите <b>Новая папка</b>, назовите; выберите её → <b>Переименовать</b>; создайте файл через Блокнот и положите в папку; <b>Копировать</b> → <b>Вставить</b>; <b>Удалить</b>.</li><li>Попробуйте открыть файл <code>.bat</code> или <code>.cmd</code> и дважды нажать на обычный файл (например, картинку).</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Окно «Мои файлы» с «Быстрым доступом» (Загрузки, Документы, Рабочий стол, Изображения, Видео, Музыка и флешки). Системных папок (Windows, Program Files, чужие профили) нет и добраться до них нельзя.</li><li>Операции работают, ошибки понятные. Скрипты (.bat, .cmd, .ps1…) открывать запрещено. Обычные файлы открываются в программе по умолчанию.</li></ul></div></div><figure class="small"><img src="images/shell-8-explorer.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r8.7" value="+"> Работает</label>
+<label><input type="radio" name="r8.7" value="-"> Не работает</label>
+<label><input type="radio" name="r8.7" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="8.8" data-title="Тест скорости и пинг">
+<h3>8.8. Тест скорости и пинг</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В панели задач нажмите <b>Тест скорости</b> и подождите до 15 секунд.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Вместо названия сети на 15 секунд показывается «↓ … ↑ … Мбит/с · до сервера клуба». Если тест не получился, написана конкретная причина (например, «нет соединения»), а не общая ошибка.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r8.8" value="+"> Работает</label>
+<label><input type="radio" name="r8.8" value="-"> Не работает</label>
+<label><input type="radio" name="r8.8" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div></section>
 <div class="box"><h2>Что НЕ проверяем в этом тесте</h2>
 Службу-стража, блокировку клавиш Windows, замену рабочего стола Windows, очистку профиля гостя и перезагрузку в конце сеанса: это в боевой установке, отдельный этап.</div>
 <div class="box"><h2>Отчёт</h2><button id="mk">Собрать отчёт</button> <button id="cp">Скопировать</button>
 <p>Пришлите текст, скриншоты всего, что «не работает», и файлы <code>server.log</code>, <code>server.err.log</code> из папки <code>work</code>.</p>
 <textarea id="out" readonly placeholder="Здесь появится отчёт"></textarea></div>
 </div>
-<div class="bar"><span id="stat">Отмечено: 0 из 30</span></div>
+<div class="bar"><span id="stat">Отмечено: 0 из 38</span></div>
 <script>
 const steps=[...document.querySelectorAll('.step')]; const KEY='clubshell-tester-v1';
 let st={}; try{st=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
 function paint(s){const r=st[s.dataset.id]||{};s.classList.remove('ok','bad','q');
  if(r.v==='+')s.classList.add('ok'); if(r.v==='-')s.classList.add('bad'); if(r.v==='?')s.classList.add('q');}
-function count(){document.getElementById('stat').textContent='Отмечено: '+Object.values(st).filter(x=>x.v).length+' из 30';}
+function count(){document.getElementById('stat').textContent='Отмечено: '+Object.values(st).filter(x=>x.v).length+' из 38';}
 steps.forEach(s=>{const id=s.dataset.id; const r=st[id]||(st[id]={});
  s.querySelectorAll('input[type=radio]').forEach(i=>{if(r.v===i.value)i.checked=true; i.onchange=()=>{r.v=i.value;save();paint(s);count();};});
  const n=s.querySelector('.note'); n.value=r.n||''; n.oninput=()=>{r.n=n.value;save();}; paint(s);});
