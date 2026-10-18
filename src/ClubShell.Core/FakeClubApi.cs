@@ -31,14 +31,27 @@ public sealed class FakeClubApi : IClubApi
         return Task.FromResult(new LoginResult(true, null, username, u.Balance, Packages));
     }
 
-    public Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth)
+    private readonly Dictionary<string, (string User, string Password)> _pendingReg = new();
+    private const string TestCode = "123456";
+
+    public Task<CodeResult> StartRegistrationAsync(string pcId, string username, string password, string birth, string phone)
     {
         ThrowIfOffline();
         username = username.Trim();
-        if (username.Length < 3 || password.Length < 6) return Task.FromResult(new LoginResult(false, "Логин от 3, пароль от 6 символов"));
-        if (_users.ContainsKey(username)) return Task.FromResult(new LoginResult(false, "Этот логин уже занят"));
-        _users[username] = (password, 0);
-        return Task.FromResult(new LoginResult(true, null, username, 0, Packages));
+        if (username.Length < 3 || password.Length < 6) return Task.FromResult(new CodeResult(false, "Логин от 3, пароль от 6 символов"));
+        if (_users.ContainsKey(username)) return Task.FromResult(new CodeResult(false, "Этот логин уже занят"));
+        _pendingReg[phone] = (username, password);
+        return Task.FromResult(new CodeResult(true, null, 60, $"Тестовый режим: SMS не отправляется, код {TestCode}"));
+    }
+
+    public Task<LoginResult> ConfirmRegistrationAsync(string pcId, string phone, string code)
+    {
+        ThrowIfOffline();
+        if (!_pendingReg.TryGetValue(phone, out var p)) return Task.FromResult(new LoginResult(false, "Сначала запросите код"));
+        if (code.Trim() != TestCode) return Task.FromResult(new LoginResult(false, "Неверный код"));
+        _pendingReg.Remove(phone);
+        _users[p.User] = (p.Password, 0);
+        return Task.FromResult(new LoginResult(true, null, p.User, 0, Packages));
     }
 
     public Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)

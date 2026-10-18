@@ -55,7 +55,8 @@ export type ToHost =
   | { type: "speedTest" } // измерить скорость интернета
   | { type: "showDesktop" } // свернуть всё и показать рабочий стол клуба
   | { type: "login"; username: string; password: string }
-  | { type: "register"; username: string; password: string; birth: string } // birth: yyyy-MM-dd
+  | { type: "registerStart"; username: string; password: string; birth: string; phone: string } // шаг 1: данные + SMS-код; birth: yyyy-MM-dd
+  | { type: "registerConfirm"; phone: string; code: string } // шаг 2: код из SMS
   | { type: "startSession"; packageId: string }
   | { type: "stopSession" }
   | { type: "launch"; id: string }
@@ -78,6 +79,7 @@ export type FromHost =
       balance?: number;
       packages?: TariffPackage[];
     }
+  | { type: "registerCodeSent"; ok: boolean; error?: string; phone?: string; resendSec?: number; hint?: string }
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }
   | { type: "sessionEnded"; reason: string }

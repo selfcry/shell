@@ -35,6 +35,8 @@ club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", true));
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
 builder.Services.AddSingleton<PcHub>();
+builder.Services.AddSingleton<StubSmsSender>();
+builder.Services.AddSingleton<ISmsSender>(sp => sp.GetRequiredService<StubSmsSender>()); // заменить на настоящего провайдера SMS
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -73,11 +75,19 @@ pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
         : Results.Ok(new { ok = false, error });
 });
 
-pc.MapPost("/register", (HttpContext ctx, RegisterReq req) =>
+pc.MapPost("/register/start", async (HttpContext ctx, RegisterStartReq req, StubSmsSender sms) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     club.Touch(p.Id);
-    var (ok, error, guest, tariffs) = club.Register(p, req.Username, req.Password, req.Birth);
+    var (ok, error, resendSec) = await club.StartRegistrationAsync(p, req.Username, req.Password, req.Birth, req.Phone, sms);
+    return Results.Ok(new { ok, error, resendSec });
+});
+
+pc.MapPost("/register/confirm", (HttpContext ctx, RegisterConfirmReq req) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    club.Touch(p.Id);
+    var (ok, error, guest, tariffs) = club.ConfirmRegistration(p, req.Phone, req.Code);
     return ok
         ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, packages = tariffs!.Select(Pkg) })
         : Results.Ok(new { ok = false, error });
@@ -154,7 +164,8 @@ admin.MapPost("/pcs/{id:long}/command", async (long id, CommandReq req, PcHub hu
     return Results.Ok(new { ok = true, delivered });
 });
 
-admin.MapGet("/guests", (string? q) => Results.Ok(club.Guests(q).Select(g => new { id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created })));
+admin.MapGet("/guests", (string? q) => Results.Ok(club.Guests(q).Select(g => new { id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created, phone = g.Phone })));
+admin.MapGet("/sms-outbox", (StubSmsSender sms) => Results.Ok(sms.Outbox())); // последние «отправленные» SMS (пока заглушка)
 admin.MapPost("/guests", (NewGuestReq req) =>
 {
     var r = club.CreateGuest(req.Login, req.Password, req.Balance ?? 0, req.Birth);

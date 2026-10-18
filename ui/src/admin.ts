@@ -13,7 +13,8 @@ import type { FromHost } from "./protocol";
 // ---------- типы ответов сервера ----------
 interface Stats { pcs: number; activeSessions: number; guests: number; revenueToday: number; topupsToday: number }
 interface PcRow { id: number; name: string; zone: string; online: boolean; lastSeen: number; session: null | { id: number; guest: string; tariff: string; started: number; remainingSec: number } }
-interface GuestRow { id: number; login: string; balance: number; birth: string | null; banned: boolean; created: number }
+interface GuestRow { id: number; login: string; balance: number; birth: string | null; banned: boolean; created: number; phone?: string | null }
+interface SmsRow { ts: number; phone: string; text: string }
 interface TariffRow { id: string; name: string; minutes: number; price: number; nightOnly: boolean; zone: string; active: boolean; sort: number }
 interface SessionRow { id: number; guestId: number; guest: string; pcId: number; pc: string; tariffId: string; started: number; ends: number; ended: number | null; price: number; reason: string | null }
 interface TxRow { id: number; amount: number; kind: string; note: string | null; ts: number }
@@ -307,10 +308,11 @@ let guestQuery = "";
 async function viewGuests(): Promise<HTMLElement | null> {
   const r = await api<GuestRow[]>("GET", "/api/admin/guests" + (guestQuery ? `?q=${encodeURIComponent(guestQuery)}` : ""));
   if (r.status !== 200) return connectionProblem(r.status);
-  const search = textInput(guestQuery, "text", "Поиск по логину");
+  const search = textInput(guestQuery, "text", "Логин или телефон");
   search.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") { guestQuery = search.value.trim(); void render(); } });
   const rows = r.data.map((g) => [
     el("b", { text: g.login }),
+    g.phone ?? "—",
     rub(g.balance),
     g.banned ? badge("заблокирован", "bad") : badge("активен", "ok"),
     when(g.created),
@@ -323,9 +325,15 @@ async function viewGuests(): Promise<HTMLElement | null> {
     ]),
   ]);
   return el("div", {}, [
-    header("Гости", search, button("Новый гость", "primary", newGuest)),
-    table(["Логин", "Баланс", "Статус", "Создан", ""], rows, "Гости не найдены"),
+    header("Гости", search, button("Журнал SMS", "", () => void smsLog()), button("Новый гость", "primary", newGuest)),
+    table(["Логин", "Телефон", "Баланс", "Статус", "Создан", ""], rows, "Гости не найдены"),
   ]);
+}
+
+async function smsLog(): Promise<void> {
+  const r = await api<SmsRow[]>("GET", "/api/admin/sms-outbox");
+  const rows = (Array.isArray(r.data) ? r.data : []).map((m) => [when(m.ts), m.phone, m.text]);
+  modal("Журнал SMS (заглушка: сообщения не уходят оператору)", [table(["Когда", "Номер", "Текст"], rows, "SMS ещё не отправлялись")]);
 }
 
 function newGuest(): void {

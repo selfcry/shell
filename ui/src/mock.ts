@@ -20,6 +20,7 @@ export class MockHost {
   private remaining = 0;
   private volume = 40;
   private muted = false;
+  private pendingReg: { user: string; password: string } | null = null;
   private windows: WindowItem[] = [
     { id: "1", title: "Counter-Strike 2", exe: "cs2.exe", active: true, minimized: false },
     { id: "2", title: "Discord", exe: "Discord.exe", active: false, minimized: false },
@@ -121,14 +122,25 @@ export class MockHost {
         this.emit({ type: "loginResult", ok: true, user: msg.username, balance: u.balance, packages: PACKAGES });
         break;
       }
-      case "register": {
+      case "registerStart": {
         if (USERS[msg.username]) {
-          this.emit({ type: "loginResult", ok: false, error: "Этот логин уже занят" });
+          this.emit({ type: "registerCodeSent", ok: false, error: "Этот логин уже занят" });
           break;
         }
-        USERS[msg.username] = { password: msg.password, balance: 0 };
+        this.pendingReg = { user: msg.username, password: msg.password };
+        this.emit({ type: "registerCodeSent", ok: true, phone: msg.phone, resendSec: 20, hint: "Тестовый режим: SMS не отправляется, код 123456" });
+        break;
+      }
+      case "registerConfirm": {
+        if (!this.pendingReg) break;
+        if (msg.code.trim() !== "123456") {
+          this.emit({ type: "loginResult", ok: false, error: "Неверный код (осталось попыток: 4)" });
+          break;
+        }
+        USERS[this.pendingReg.user] = { password: this.pendingReg.password, balance: 0 };
         this.balance = 0;
-        this.emit({ type: "loginResult", ok: true, user: msg.username, balance: 0, packages: PACKAGES });
+        this.emit({ type: "loginResult", ok: true, user: this.pendingReg.user, balance: 0, packages: PACKAGES });
+        this.pendingReg = null;
         break;
       }
       case "startSession": {
@@ -203,9 +215,9 @@ const adminData = {
     { id: 4, name: "PC-04", zone: "VIP", online: true, lastSeen: now(), session: { id: 12, guest: "vip", tariff: "h1", started: now() - 600, remainingSec: 3000 } },
   ] as Array<{ id: number; name: string; zone: string; online: boolean; lastSeen: number; session: null | { id: number; guest: string; tariff: string; started: number; remainingSec: number } }>,
   guests: [
-    { id: 1, login: "demo", balance: 460, birth: null as string | null, banned: false, created: now() - 86400 * 3 },
-    { id: 2, login: "vip", balance: 2000, birth: null, banned: false, created: now() - 86400 * 9 },
-    { id: 3, login: "ivan_k", balance: 35, birth: "2001-04-12", banned: true, created: now() - 86400 * 30 },
+    { id: 1, login: "demo", balance: 460, birth: null as string | null, banned: false, created: now() - 86400 * 3, phone: "+79001234567" as string | null },
+    { id: 2, login: "vip", balance: 2000, birth: null, banned: false, created: now() - 86400 * 9, phone: null },
+    { id: 3, login: "ivan_k", balance: 35, birth: "2001-04-12", banned: true, created: now() - 86400 * 30, phone: "+79287654321" },
   ],
   tariffs: [
     { id: "h1", name: "1 час", minutes: 60, price: 140, nightOnly: false, zone: "ARENA", active: true, sort: 1 },
@@ -240,6 +252,7 @@ function handleAdmin(msg: ToHost, emit: (m: FromHost) => void): void {
     const q = new URLSearchParams(query).get("q")?.toLowerCase() ?? "";
     return reply(adminData.guests.filter((g) => g.login.includes(q)));
   }
+  if (msg.method === "GET" && route === "/sms-outbox") return reply([{ ts: now() - 120, phone: "+79287654321", text: "Мираж PRO: код подтверждения 123456. Никому не сообщайте его." }]);
   if (msg.method === "GET" && route === "/tariffs") return reply(adminData.tariffs);
   if (msg.method === "GET" && route === "/sessions") {
     const rows = adminData.pcs.filter((p) => p.session).map((p) => ({ id: p.session!.id, guestId: 1, guest: p.session!.guest, pcId: p.id, pc: p.name, tariffId: p.session!.tariff, started: p.session!.started, ends: now() + p.session!.remainingSec, ended: null, price: 350, reason: null }));
@@ -261,7 +274,7 @@ function handleAdmin(msg: ToHost, emit: (m: FromHost) => void): void {
     return reply({ ok: true, balance: g.balance });
   }
   if (msg.method === "POST" && route === "/guests") {
-    adminData.guests.push({ id: adminData.guests.length + 1, login: String(body.login), balance: Number(body.balance ?? 0), birth: null, banned: false, created: now() });
+    adminData.guests.push({ id: adminData.guests.length + 1, login: String(body.login), balance: Number(body.balance ?? 0), birth: null, banned: false, created: now(), phone: null });
     return reply({ ok: true });
   }
   if (msg.method === "PUT" && parts[0] === "guests") {

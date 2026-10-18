@@ -32,9 +32,17 @@ public sealed class HttpClubApi : IClubApi, IDisposable
         return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
     }
 
-    public async Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth)
+    private sealed record CodeDto(bool Ok, string? Error, int ResendSec);
+
+    public async Task<CodeResult> StartRegistrationAsync(string pcId, string username, string password, string birth, string phone)
     {
-        var r = await PostAsync<LoginDto>("api/pc/register", new { username, password, birth });
+        var r = await PostAsync<CodeDto>("api/pc/register/start", new { username, password, birth, phone });
+        return new CodeResult(r.Ok, r.Error, r.ResendSec);
+    }
+
+    public async Task<LoginResult> ConfirmRegistrationAsync(string pcId, string phone, string code)
+    {
+        var r = await PostAsync<LoginDto>("api/pc/register/confirm", new { phone, code });
         return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
     }
 

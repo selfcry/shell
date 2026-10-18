@@ -349,3 +349,5 @@ body.tm-page .backdrop { display: none; }
 .card label.agree { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; font-size: 13px; color: var(--muted); }
 .card label.agree input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--orange); }
 .card [hidden] { display: none !important; }
+.card input.code { text-align: center; font-size: 26px; letter-spacing: 0.4em; }
+.card .hint { margin-top: 8px; font-size: 12px; color: var(--muted); }

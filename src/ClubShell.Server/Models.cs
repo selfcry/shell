@@ -2,12 +2,13 @@ namespace ClubShell.Server;
 
 public record Pc(long Id, string Name, string Zone, long LastSeen);
 public record Tariff(string Id, string Name, int Minutes, int Price, bool NightOnly, string Zone, bool Active, int Sort);
-public record Guest(long Id, string Login, int Balance, string? Birth, bool Banned, long Created);
+public record Guest(long Id, string Login, int Balance, string? Birth, bool Banned, long Created, string? Phone = null);
 public record SessionInfo(long Id, long GuestId, string Guest, long PcId, string Pc, string TariffId, long Started, long Ends, long? Ended, int Price, string? Reason);
 
 // запросы клиентов ПК
 public record LoginReq(string Username, string Password);
-public record RegisterReq(string Username, string Password, string? Birth);
+public record RegisterStartReq(string Username, string Password, string? Birth, string Phone);
+public record RegisterConfirmReq(string Phone, string Code);
 public record StartReq(string Username, string PackageId);
 public record StopReq(string Username);
 public record HeartbeatReq(string? Username);
