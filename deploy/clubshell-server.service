@@ -14,6 +14,11 @@ Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
 Environment=Club__DataDir=/var/lib/clubshell
 Environment=Club__TimeZone=Europe/Moscow
 Environment=Club__SeedDemo=false
+# без libicu на сервере: инвариантная культура (нам нужны только даты и числа)
+Environment=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+# в журнал только предупреждения и ошибки: пульсы ПК идут постоянно, подробный лог забил бы диск
+Environment=Logging__LogLevel__Default=Warning
+Environment=Logging__LogLevel__Microsoft.AspNetCore=Warning
 # Сервер слушает только localhost, наружу его выставляет Caddy с HTTPS.
 NoNewPrivileges=true
 ProtectSystem=strict

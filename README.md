@@ -178,3 +178,12 @@ ASP.NET (minimal API) + SQLite. Сервер — единственный ист
 ## Релизы и проверка
 
 Каждая программа собирается своим workflow (`.github/workflows/build-*.yml`: Locker, Service, Admin, Server для Linux и Windows). После успешной сборки на main архив `ClubShell.<Программа>-<платформа>.zip` выкладывается в [GitHub Releases](https://github.com/selfcry/shell/releases): скользящий релиз `latest` обновляется при каждой сборке, а тег `v1.2.3` (`git tag v1.2.3 && git push --tags`) создаёт постоянный релиз. Проверка «всё вместе» на виртуалке: `scripts/test-all.ps1` и [docs/test-on-windows.md](docs/test-on-windows.md); тот же скрипт (режим `-ServerOnly`) гоняется в CI на Windows (`e2e-server-windows.yml`).
+
+### Развёрнуто на VDS (cryvx.ru)
+
+Сервер клуба работает на VDS (`ssh vds`, Ubuntu, play2go) по адресу **https://cryvx.ru**.
+- Программа: `/opt/clubshell-server` (самодостаточная, .NET ставить не нужно), служба `clubshell-server` (systemd), данные и копии базы в `/var/lib/clubshell`, слушает только `127.0.0.1:5080`. Демо-гостей нет (`Club__SeedDemo=false`), в журнал идут только предупреждения.
+- HTTPS: на этом же VDS уже есть nginx с SNI-роутером на 443 (`/etc/nginx/stream.d/sni-router.conf`). Для cryvx.ru добавлена строка в карту роутера и сайт `/etc/nginx/sites-available/cryvx.ru` (копия: `deploy/nginx-cryvx.ru.conf`); сертификат Let's Encrypt выпускается и продлевается certbot-ом (webroot `/var/www/cryvx-acme`). Остальные сайты на сервере не менялись, копия настроек nginx до изменений: `/root/backup`.
+- **Ключ администратора:** `ssh vds cat /var/lib/clubshell/admin-key.txt`. Админ-панель: адрес `https://cryvx.ru` и этот ключ.
+- **Подключение ПК клуба:** в админ-панели «Компьютеры» → «Добавить ПК» → токен вписать в `C:\ProgramData\ClubShell\config.json` на ПК: `"ServerUrl": "https://cryvx.ru"`, `"PcToken": "…"`.
+- **Обновление сервера:** собрать `dotnet publish src/ClubShell.Server -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish`, залить `publish/` в `/opt/clubshell-server` и `systemctl restart clubshell-server` (либо взять `ClubShell.Server-linux-x64.zip` из GitHub Releases).
