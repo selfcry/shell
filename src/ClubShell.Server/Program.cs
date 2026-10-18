@@ -165,10 +165,13 @@ admin.MapPut("/guests/{id:long}", (long id, UpdateGuestReq req) =>
     var r = club.UpdateGuest(id, req.Password, req.Banned, req.Birth);
     return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
 });
-admin.MapPost("/guests/{id:long}/topup", (long id, TopUpReq req) =>
+admin.MapPost("/guests/{id:long}/topup", async (long id, TopUpReq req, PcHub hub) =>
 {
     var (r, balance) = club.TopUp(id, req.Amount, req.Note);
-    return r.Ok ? Results.Ok(new { ok = true, balance }) : Results.BadRequest(new { ok = false, error = r.Error });
+    if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
+    // Гость уже сидит за ПК: сразу присылаем ему новый баланс, чтобы не перезаходить.
+    if (club.BalanceTarget(id) is { } t) await hub.SendAsync(t.pcId, new { type = "command", name = "balance", user = t.login, balance = t.balance });
+    return Results.Ok(new { ok = true, balance });
 });
 admin.MapGet("/guests/{id:long}/transactions", (long id) => Results.Ok(club.Transactions(id)));
 

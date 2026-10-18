@@ -90,6 +90,10 @@ onMessage((msg: FromHost) => {
     case "sessionEnded":
       intro.setNotice(msg.reason);
       break;
+    case "balance":
+      tariffs.setBalance(msg.balance);
+      desktop.setBalance(msg.balance);
+      break;
     case "notice":
       if (current === "desktop") desktop.notice(msg.text);
       else intro.setNotice(msg.text);

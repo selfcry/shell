@@ -4,6 +4,8 @@ import type { TariffPackage } from "../protocol";
 export interface TariffsScreen {
   root: HTMLElement;
   setData(user: string, balance: number, packages: TariffPackage[]): void;
+  /** Баланс изменился (пополнил администратор): перерисовать тарифы без повторного входа. */
+  setBalance(balance: number): void;
   setError(text: string): void;
 }
 
@@ -23,9 +25,15 @@ export function buildTariffs(onPick: (packageId: string) => void, onCancel: () =
     ]),
   ]);
 
-  return {
+  let lastUser = "";
+  let lastPackages: TariffPackage[] = [];
+
+  const api: TariffsScreen = {
     root,
+    setBalance: (b) => api.setData(lastUser, b, lastPackages),
     setData(user, balance, packages) {
+      lastUser = user;
+      lastPackages = packages;
       title.textContent = user ? `Привет, ${user}` : "Выберите тариф";
       bal.textContent = `${balance} ₽`;
       error.textContent = "";
@@ -45,4 +53,5 @@ export function buildTariffs(onPick: (packageId: string) => void, onCancel: () =
     },
     setError: (t) => (error.textContent = t),
   };
+  return api;
 }

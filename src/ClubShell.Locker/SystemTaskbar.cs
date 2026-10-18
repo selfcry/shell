@@ -12,6 +12,32 @@ internal static class SystemTaskbar
     private static bool _hidden;
     private static int _savedState = -1;
 
+    // Состояние панели Windows до нас записывается в файл: если оболочку убили (диспетчер задач, сбой, STOP_ALL),
+    // при следующем запуске или командой «ClubShell.Locker.exe --restore-taskbar» всё возвращается.
+    private static string StateFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClubShell", "taskbar-state.txt");
+
+    /// <summary>Вернуть панель Windows, если прошлый запуск не успел это сделать. Вызывается в начале работы.</summary>
+    public static void RestoreLeftover()
+    {
+        if (File.Exists(StateFile)) ForceRestore();
+    }
+
+    /// <summary>Принудительно вернуть панель Windows (команда --restore-taskbar): прежнее состояние из файла, а если файла нет — обычное (без автоскрытия).</summary>
+    public static void ForceRestore()
+    {
+        var state = 0;
+        try { if (int.TryParse(File.ReadAllText(StateFile).Trim(), out var v)) state = v; } catch (Exception) { /* файла нет */ }
+        var main = FindWindow("Shell_TrayWnd", null);
+        if (main != IntPtr.Zero)
+        {
+            var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = main, lParam = (IntPtr)state };
+            SHAppBarMessage(ABM_SETSTATE, ref data);
+        }
+        foreach (var h in Taskbars()) ShowWindow(h, SW_SHOWNA);
+        try { File.Delete(StateFile); } catch (Exception) { /* не страшно */ }
+        _hidden = false;
+    }
+
     /// <summary>Спрятать (и держать спрятанной: explorer может показать панель снова).</summary>
     public static void Hide()
     {
@@ -23,6 +49,12 @@ internal static class SystemTaskbar
             // Автоскрытие освобождает у системы резерв места, иначе под нашей панелью осталась бы пустая полоса.
             var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = main };
             _savedState = (int)(long)SHAppBarMessage(ABM_GETSTATE, ref data);
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(StateFile)!);
+                File.WriteAllText(StateFile, _savedState.ToString());
+            }
+            catch (Exception) { /* без файла просто не будет аварийного восстановления */ }
             data.lParam = (IntPtr)(_savedState | ABS_AUTOHIDE);
             SHAppBarMessage(ABM_SETSTATE, ref data);
             _hidden = true;
@@ -41,6 +73,7 @@ internal static class SystemTaskbar
             SHAppBarMessage(ABM_SETSTATE, ref data);
         }
         foreach (var h in Taskbars()) ShowWindow(h, SW_SHOWNA);
+        try { File.Delete(StateFile); } catch (Exception) { /* не страшно */ }
     }
 
     private static IEnumerable<IntPtr> Taskbars()

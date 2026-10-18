@@ -10,6 +10,7 @@ param(
     [string]$LocalZips = "",
     [int]$Port = 5080,
     [switch]$KeepData,
+    [switch]$AllowPower,   # кнопки «Перезагрузить» и «Выключить» в админке реально перезагружают/выключают этот ПК (только для виртуалки!)
     [switch]$ServerOnly,   # только сервер и автопроверки API (без окон оболочки и админки); так скрипт гоняется в CI
     [switch]$Stop
 )
@@ -20,6 +21,9 @@ function Stop-All {
     foreach ($n in "ClubShell.Server", "ClubShell.Locker", "ClubShell.Admin") {
         Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     }
+    # Если оболочку закрыли силой, панель задач Windows и клавиша Win могли остаться спрятанными/сломанными: возвращаем.
+    $lk = Join-Path $Dir "locker\ClubShell.Locker.exe"
+    if (Test-Path $lk) { Start-Process -FilePath $lk -ArgumentList "--restore-taskbar" -Wait }
 }
 
 if ($Stop) { Stop-All; Write-Host "Остановлено."; return }
@@ -148,6 +152,7 @@ Write-Host "4/6 Запуск оболочки (тестовый режим, по
 $env:CLUBSHELL_TEST = "1"
 $env:CLUBSHELL_SERVER_URL = $base
 $env:CLUBSHELL_PC_TOKEN = $pcToken
+if ($AllowPower) { $env:CLUBSHELL_TEST_POWER = "1" }
 Start-Process -FilePath (Join-Path $Dir "locker\ClubShell.Locker.exe") -WorkingDirectory (Join-Path $Dir "locker")
 
 # ---------- 5. админка ----------

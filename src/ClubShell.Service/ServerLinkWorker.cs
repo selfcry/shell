@@ -81,6 +81,14 @@ public sealed class ServerLinkWorker : BackgroundService
             case "endSession" or "lock" or "message" or "sync":
                 _bus.Publish(new PipeMessage { Type = "command", Name = name, Text = text, RemainingSec = sec });
                 break;
+            case "balance":
+                _bus.Publish(new PipeMessage
+                {
+                    Type = "command", Name = name,
+                    User = root.TryGetProperty("user", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null,
+                    Balance = root.TryGetProperty("balance", out var b) && b.TryGetInt32(out var bal) ? bal : 0,
+                });
+                break;
         }
     }
 

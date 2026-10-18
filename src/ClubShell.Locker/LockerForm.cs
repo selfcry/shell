@@ -75,10 +75,9 @@ internal sealed class LockerForm : Form
         _session.Ended += reason => RunOnUi(() => EndSession(reason));
 
         _guard.Tick += (_, _) => Reassert();
-        _status.Tick += async (_, _) => { SystemTaskbar.Hide(); CheckService(); await SendStatusAsync(); };
+        _status.Tick += async (_, _) => { if (!_locked) SystemTaskbar.Hide(); CheckService(); await SendStatusAsync(); };
         _service.MessageReceived += msg => RunOnUi(() => OnServiceMessage(msg));
 
-        SystemTaskbar.Hide();
         SetMode(locked: true);
         Load += async (_, _) => await InitWebAsync();
         _service.Start();
@@ -94,9 +93,11 @@ internal sealed class LockerForm : Form
         var screen = Screen.PrimaryScreen!;
         if (locked)
         {
-            TopMost = true;
+            // В тестовом режиме заставка не перекрывает всё подряд: рядом должны быть админка, панель Windows и Alt+Tab.
+            TopMost = !_test;
             Bounds = screen.Bounds;
-            _guard.Start();
+            if (!_test) _guard.Start();
+            SystemTaskbar.Restore(); // на заставке панель Windows (если она есть) снова доступна
         }
         else
         {
@@ -104,6 +105,7 @@ internal sealed class LockerForm : Form
             _guard.Stop();
             TopMost = false;
             Bounds = screen.Bounds;
+            SystemTaskbar.Hide(); // в сеансе у гостя только наша панель
         }
         _taskbar?.SetVisible(!locked);
         if (locked) { _taskMgr?.HideManager(); if (IsHandleCreated) UnregisterHotKey(Handle, HotkeyId); }
@@ -153,7 +155,7 @@ internal sealed class LockerForm : Form
     /// <summary>В режиме блокировки не даём окну потерять фокус или спрятаться за другим окном.</summary>
     private void Reassert()
     {
-        if (!_locked) return;
+        if (!_locked || _test) return;
         TopMost = true;
         if (!ContainsFocus) { Activate(); _web.Focus(); }
     }
@@ -209,6 +211,27 @@ internal sealed class LockerForm : Form
                 break;
             case "sync":
                 _session.SyncRemaining(msg.RemainingSec);
+                break;
+            case "balance":
+                // Администратор пополнил или списал: обновляем баланс у гостя, который сейчас сидит за этим ПК.
+                if (_session.User is not null && string.Equals(_session.User, msg.User, StringComparison.OrdinalIgnoreCase))
+                {
+                    _session.SetBalance(msg.Balance);
+                    Post(new { type = "balance", balance = msg.Balance });
+                }
+                break;
+            case "reboot" or "shutdown":
+                // В боевой установке эти команды выполняет служба (она SYSTEM) и окну они не приходят.
+                // В тестовом режиме окно делает это само, но только если разрешено (CLUBSHELL_TEST_POWER=1).
+                if (!_test) break;
+                if (Environment.GetEnvironmentVariable("CLUBSHELL_TEST_POWER") != "1")
+                {
+                    Post(new { type = "notice", text = $"Тест: команда «{msg.Name}» получена, но не выполнена (разрешите запуском с -AllowPower)" });
+                    break;
+                }
+                Post(new { type = "notice", text = msg.Name == "reboot" ? "Компьютер перезагрузится через 5 секунд" : "Компьютер выключится через 5 секунд" });
+                try { Process.Start(new ProcessStartInfo("shutdown", $"{(msg.Name == "reboot" ? "/r" : "/s")} /t 5 /f") { CreateNoWindow = true, UseShellExecute = false }); }
+                catch (Exception ex) { Debug.WriteLine($"[ClubShell] power command failed: {ex.Message}"); }
                 break;
         }
     }

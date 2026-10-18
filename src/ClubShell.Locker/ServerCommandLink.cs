@@ -8,7 +8,7 @@ namespace ClubShell.Locker;
 /// <summary>
 /// Команды сервера прямо в окно, без службы. Нужно только для тестового запуска (CLUBSHELL_TEST=1 с CLUBSHELL_SERVER_URL
 /// и CLUBSHELL_PC_TOKEN): в рабочей установке WebSocket держит служба и передаёт команды окну через канал.
-/// reboot и shutdown здесь не выполняются, чтобы не перезагрузить тестовую машину случайно.
+/// reboot и shutdown окно выполняет само только при CLUBSHELL_TEST_POWER=1 (см. LockerForm.OnServerCommand).
 /// </summary>
 internal sealed class ServerCommandLink : IDisposable
 {
@@ -66,13 +66,14 @@ internal sealed class ServerCommandLink : IDisposable
             var root = doc.RootElement;
             if (root.GetProperty("type").GetString() != "command") return;
             var name = root.GetProperty("name").GetString() ?? "";
-            if (name is "reboot" or "shutdown") return;
             _onCommand(new PipeMessage
             {
                 Type = "command",
                 Name = name,
                 Text = root.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null,
                 RemainingSec = root.TryGetProperty("remainingSec", out var s) && s.TryGetInt32(out var n) ? n : 0,
+                User = root.TryGetProperty("user", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null,
+                Balance = root.TryGetProperty("balance", out var b) && b.TryGetInt32(out var bal) ? bal : 0,
             });
         }
         catch (Exception) { /* мусор от сервера игнорируем */ }

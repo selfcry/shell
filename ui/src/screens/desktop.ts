@@ -13,6 +13,7 @@ export interface DesktopScreen {
   setUser(name: string): void;
   setCatalog(items: CatalogItem[]): void;
   tick(remainingSec: number, balance: number): void;
+  setBalance(balance: number): void;
   launchResult(id: string, ok: boolean, error?: string): void;
   notice(text: string): void;
 }
@@ -207,6 +208,7 @@ export function buildDesktop(h: DesktopHandlers): DesktopScreen {
       items = list;
       renderTab();
     },
+    setBalance: (balance) => (userMeta.textContent = `Баланс ${balance} ₽`),
     tick(remainingSec, balance) {
       remain.textContent = formatTime(remainingSec);
       remain.classList.toggle("low", remainingSec <= 300);

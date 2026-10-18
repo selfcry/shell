@@ -26,6 +26,9 @@ public sealed class SessionManager : IDisposable
 
     public void SetUser(string user, int balance) { User = user; Balance = balance; }
 
+    /// <summary>Баланс изменился на сервере (пополнение или списание администратором).</summary>
+    public void SetBalance(int balance) => Balance = balance;
+
     public void Begin(int minutes, int balance)
     {
         Balance = balance;

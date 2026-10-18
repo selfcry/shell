@@ -20,6 +20,7 @@ public sealed class ClubService
     private readonly ConcurrentDictionary<long, byte> _seenDirty = new();        // ПК, чей last_seen ещё не записан в базу
     private readonly ConcurrentDictionary<string, Pc> _pcByHash = new();         // sha256(токен) -> ПК
     private volatile List<Tariff>? _tariffCache;
+    private readonly ConcurrentDictionary<long, long> _guestPc = new();         // гость -> ПК, на котором он последний раз входил (чтобы прислать новый баланс)
 
     public ClubService(Db db, TimeZoneInfo tz)
     {
@@ -196,6 +197,15 @@ public sealed class ClubService
         }
     }
 
+    /// <summary>ПК, за которым гость сейчас (или последний раз) работал, и его актуальный баланс: чтобы прислать оболочке обновление.</summary>
+    public (long pcId, string login, int balance)? BalanceTarget(long guestId)
+    {
+        if (!_guestPc.TryGetValue(guestId, out var pcId)) return null;
+        using var c = _db.Open();
+        var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE id = $i", ReadGuest, ("$i", guestId));
+        return g is null ? null : (pcId, g.Login, g.Balance);
+    }
+
     public List<object> Transactions(long guestId)
     {
         using var c = _db.Open();
@@ -271,6 +281,7 @@ public sealed class ClubService
         }
         _loginFails.TryRemove(login, out _);
         if (row.g!.Banned) return (false, "Учётная запись заблокирована", null, null);
+        _guestPc[row.g.Id] = pc.Id;
         return (true, null, row.g, Tariffs(pc.Zone));
     }
 
@@ -365,6 +376,7 @@ public sealed class ClubService
 
         using var c = _db.Open();
         var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", login));
+        if (g is not null) _guestPc[g.Id] = pc.Id;
         return (true, null, g, Tariffs(pc.Zone));
     }
 

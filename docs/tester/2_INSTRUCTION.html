@@ -33,7 +33,7 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <div class="box"><h2>Тестовые данные</h2>
 Гость: логин <code>demo</code>, пароль <code>demo</code> (на балансе 600 ₽). Гость: <code>vip</code> / <code>vipvip</code> (2000 ₽).<br>
 Админка: адрес <code>http://127.0.0.1:5080</code>, ключ администратора — в буфере обмена после запуска (или файл <code>work\data\admin-key.txt</code>).<br>
-<b>Как выйти из оболочки:</b> на заставке нажмите <code>Ctrl+Shift+F12</code>, введите PIN <code>0000</code>. Остановить всё: <b>STOP_ALL.cmd</b>.<br>
+<b>Как выйти из оболочки:</b> на заставке нажмите <code>Ctrl+Shift+F12</code>, введите PIN <code>0000</code>. Остановить всё: <b>STOP_ALL.cmd</b> (он же возвращает панель задач Windows и клавишу Win, если оболочку закрыли силой).<br>
 Картинки в инструкции взяты из тестовой версии интерфейса: цвета и расположение те же, но данные (имена, цифры) у вас будут свои.</div>
 <div class="box info"><h2>О вас и компьютере</h2>
 <input id="who" placeholder="Ваше имя"> <input id="win" placeholder="Версия Windows (Win+R → winver)"> <input id="scr" placeholder="Разрешение экрана">
@@ -136,12 +136,19 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <div class="step" data-id="3.3" data-title="Завершить сеанс">
 <h3>3.3. Завершить сеанс</h3>
 <div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В карточке нажмите <b>Завершить сеанс</b> → в вопросе снова <b>Завершить</b>.</li></ol></div>
-<div><div class="lbl exp">Что должно получиться</div><ul><li>Оболочка сама возвращается на заставку (МИРАЖ, «Нажмите ПРОБЕЛ»).</li><li>На экране на пару секунд: «Тестовый режим: перезагрузка и очистка пропущены». В боевой установке тут ПК перезагружается, в тесте — нет.</li><li>В админке ПК снова «Свободен». <b>Кнопки «Перезагрузить» и «Выключить» в тесте не нажимайте</b>.</li></ul></div></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Оболочка сама возвращается на заставку (МИРАЖ, «Нажмите ПРОБЕЛ»).</li><li>На экране на пару секунд: «Тестовый режим: перезагрузка и очистка пропущены». В боевой установке тут ПК перезагружается, в тесте — нет.</li><li>В админке ПК снова «Свободен». Кнопки «Перезагрузить» и «Выключить» проверяются в следующем шаге (3.4).</li></ul></div></div>
 <div class="res"><label><input type="radio" name="r3.3" value="+"> Работает</label>
 <label><input type="radio" name="r3.3" value="-"> Не работает</label>
 <label><input type="radio" name="r3.3" value="?"> Странно / не понял</label>
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
-</section><section><h2><span class="num">4</span>Регистрация нового гостя и деньги</h2>
+<div class="step" data-id="3.4" data-title="Перезагрузка и выключение из админки (только на виртуалке!)">
+<h3>3.4. Перезагрузка и выключение из админки (только на виртуалке!)</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Запускали через <b>START_TEST.cmd</b> (а не START_TEST_SAFE.cmd)? Тогда эти кнопки реально перезагрузят/выключат компьютер. На реальном ПК не нажимайте!</li><li>Сохраните всё нужное. Админка → <b>Компьютеры</b> → карточка VM-PC-01 → <b>Перезагрузить</b> → подтвердите.</li><li>После включения запустите <b>START_TEST.cmd</b> снова и повторите для кнопки <b>Выключить</b> (виртуалка выключится).</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В оболочке появляется уведомление «Компьютер перезагрузится через 5 секунд», через ~5 секунд виртуалка перезагружается.</li><li>Для «Выключить» — аналогично, ПК выключается.</li><li>Если запускали START_TEST_SAFE.cmd: появляется уведомление «команда получена, но не выполнена» — это тоже правильно.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r3.4" value="+"> Работает</label>
+<label><input type="radio" name="r3.4" value="-"> Не работает</label>
+<label><input type="radio" name="r3.4" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div></section><section><h2><span class="num">4</span>Регистрация нового гостя и деньги</h2>
 <figure><img src="images/shell-3-register.jpg" alt="Форма регистрации"><figcaption>Форма регистрации</figcaption></figure>
 <div class="step" data-id="4.1" data-title="Регистрация">
 <h3>4.1. Регистрация</h3>
@@ -175,7 +182,14 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <label><input type="radio" name="r4.4" value="-"> Не работает</label>
 <label><input type="radio" name="r4.4" value="?"> Странно / не понял</label>
 <input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
-<div class="step" data-id="4.5" data-title="Блокировка">
+<div class="step" data-id="4.4a" data-title="Баланс обновляется сам">
+<h3>4.4a. Баланс обновляется сам</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В оболочке войдите гостем <b>test1</b> и <b>останьтесь на экране выбора тарифа</b>.</li><li>В админке у test1 нажмите <b>Пополнить</b> на <code>300</code>.</li><li>Посмотрите на оболочку. Потом начните сеанс «1 час» и пополните ещё раз на 100.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Через 1–2 секунды в оболочке сумма «Баланс» выросла, тарифы, на которые раньше не хватало, стали доступны, а надпись «не хватает средств» пропала.</li><li>В сеансе в карточке гостя вверху («Баланс … ₽») новая сумма появилась без перезахода.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.4a" value="+"> Работает</label>
+<label><input type="radio" name="r4.4a" value="-"> Не работает</label>
+<label><input type="radio" name="r4.4a" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div><div class="step" data-id="4.5" data-title="Блокировка">
 <h3>4.5. Блокировка</h3>
 <div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В строке test1 нажмите <b>Блок</b>. В оболочке (Пробел → Вход) попробуйте войти test1 / secret123.</li><li>Потом в админке нажмите <b>Разблокировать</b> и войдите снова.</li></ol></div>
 <div><div class="lbl exp">Что должно получиться</div><ul><li>Заблокированному вход отказан («Учётная запись заблокирована»). После разблокировки вход работает, на балансе 200 ₽, доступен только «1 час».</li></ul></div></div>
@@ -283,14 +297,14 @@ textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;pa
 <p>Пришлите текст, скриншоты всего, что «не работает», и файлы <code>server.log</code>, <code>server.err.log</code> из папки <code>work</code>.</p>
 <textarea id="out" readonly placeholder="Здесь появится отчёт"></textarea></div>
 </div>
-<div class="bar"><span id="stat">Отмечено: 0 из 28</span></div>
+<div class="bar"><span id="stat">Отмечено: 0 из 30</span></div>
 <script>
 const steps=[...document.querySelectorAll('.step')]; const KEY='clubshell-tester-v1';
 let st={}; try{st=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
 function paint(s){const r=st[s.dataset.id]||{};s.classList.remove('ok','bad','q');
  if(r.v==='+')s.classList.add('ok'); if(r.v==='-')s.classList.add('bad'); if(r.v==='?')s.classList.add('q');}
-function count(){document.getElementById('stat').textContent='Отмечено: '+Object.values(st).filter(x=>x.v).length+' из 28';}
+function count(){document.getElementById('stat').textContent='Отмечено: '+Object.values(st).filter(x=>x.v).length+' из 30';}
 steps.forEach(s=>{const id=s.dataset.id; const r=st[id]||(st[id]={});
  s.querySelectorAll('input[type=radio]').forEach(i=>{if(r.v===i.value)i.checked=true; i.onchange=()=>{r.v=i.value;save();paint(s);count();};});
  const n=s.querySelector('.note'); n.value=r.n||''; n.oninput=()=>{r.n=n.value;save();}; paint(s);});

@@ -13,7 +13,7 @@ namespace ClubShell.Core;
 ///   hello     {pcName, zone, requireService}        — сразу после подключения
 ///   state     {offline, reason}                     — раз в 2 с; offline=true значит «заблокировать»
 ///   adminResult {ok}                                — ответ на adminPin
-///   command   {name, text, remainingSec}            — команда сервера: endSession | lock | message | sync
+///   command   {name, text, remainingSec, user, balance} — команда сервера: endSession | lock | message | sync | balance
 /// </summary>
 public static class PipeNames
 {
@@ -35,6 +35,7 @@ public sealed class PipeMessage
 
     // command: команда сервера окну (endSession, lock, message, sync)
     public string? Name { get; set; }
+    public int Balance { get; set; }
     public string? Text { get; set; }
 
     public string? PcName { get; set; }

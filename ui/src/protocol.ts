@@ -81,6 +81,7 @@ export type FromHost =
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }
   | { type: "sessionEnded"; reason: string }
+  | { type: "balance"; balance: number } // баланс гостя изменился на сервере (пополнение/списание)
   | { type: "notice"; text: string } // сообщение от администратора
   | { type: "rebooting"; test: boolean } // сеанс завершён: ПК перезагружается и чистится (test — только имитация)
   | { type: "catalog"; items: CatalogItem[] }
