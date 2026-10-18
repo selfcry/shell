@@ -133,29 +133,26 @@ public sealed class ClubService
 
     // ---------- гости ----------
 
-    public Result CreateGuest(string login, string password, int balance, string? birth, string? phone = null, string? preHashed = null)
+    public Result CreateGuest(string login, string password, int balance, string? birth)
     {
-        var bad = Validate(login, preHashed is null ? password : null);
+        var bad = Validate(login, password);
         if (bad is not null) return new Result(false, bad);
         if (balance < 0) return new Result(false, "Баланс не может быть отрицательным");
-        var hash = preHashed ?? Security.HashPassword(password);
+        var hash = Security.HashPassword(password);
         lock (_writeLock)
         {
             using var c = _db.Open();
             using var tx = c.BeginTransaction();
             try
             {
-                Db.Exec(c, "INSERT INTO guests(login, pass, balance, birth, phone, created) VALUES($l, $p, $b, $d, $ph, $t)",
-                    ("$l", login.Trim()), ("$p", hash), ("$b", balance), ("$d", birth), ("$ph", phone), ("$t", Db.Now()));
+                Db.Exec(c, "INSERT INTO guests(login, pass, balance, birth, created) VALUES($l, $p, $b, $d, $t)",
+                    ("$l", login.Trim()), ("$p", hash), ("$b", balance), ("$d", birth), ("$t", Db.Now()));
                 if (balance > 0)
                     Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, ts) VALUES($g, $a, 'topup', 'Начальный баланс', $t)",
                         ("$g", Db.LastId(c)), ("$a", balance), ("$t", Db.Now()));
                 tx.Commit();
             }
-            catch (SqliteException e) when (e.SqliteErrorCode == 19)
-            {
-                return new Result(false, e.Message.Contains("phone") ? "Этот номер телефона уже зарегистрирован" : "Гость с таким логином уже есть");
-            }
+            catch (SqliteException e) when (e.SqliteErrorCode == 19) { return new Result(false, "Гость с таким логином уже есть"); }
         }
         return new Result(true);
     }
@@ -163,8 +160,8 @@ public sealed class ClubService
     public List<Guest> Guests(string? search)
     {
         using var c = _db.Open();
-        return Db.Query(c, "SELECT id, login, balance, birth, banned, created, phone FROM guests WHERE $q = '' OR login LIKE '%' || $q || '%' OR phone LIKE '%' || $q || '%' ORDER BY login LIMIT 500",
-            r => ReadGuest(r) with { Phone = r.IsDBNull(6) ? null : r.GetString(6) }, ("$q", search?.Trim() ?? ""));
+        return Db.Query(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE $q = '' OR login LIKE '%' || $q || '%' ORDER BY login LIMIT 500",
+            ReadGuest, ("$q", search?.Trim() ?? ""));
     }
 
     public Result UpdateGuest(long id, string? password, bool? banned, string? birth)
@@ -325,113 +322,49 @@ public sealed class ClubService
         return s is null ? null : EndSession(s.PcId, reason);
     }
 
-    // ---------- самостоятельная регистрация гостя с подтверждением телефона ----------
+    // ---------- самостоятельная регистрация гостя ----------
 
     private static readonly System.Text.RegularExpressions.Regex LoginRx = new(@"^[A-Za-z0-9_.\-А-Яа-яЁё]{3,24}$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    private sealed class PendingReg
-    {
-        public required string Login, PassHash, Birth, CodeHash;
-        public long Expires, SentAt;
-        public int Attempts;
-    }
-
-    private readonly ConcurrentDictionary<string, PendingReg> _pending = new();   // телефон -> ожидающая регистрация
     private readonly ConcurrentDictionary<long, Queue<long>> _regByPc = new();
-    private readonly ConcurrentDictionary<string, Queue<long>> _smsByPhone = new();
     private readonly Queue<long> _regAll = new();
 
-    /// <summary>Приводит номер к виду +7XXXXXXXXXX. Принимаются +7…, 8…, 7… и 10 цифр без кода страны.</summary>
-    public static string? NormalizePhone(string? raw)
-    {
-        var d = new string((raw ?? "").Where(char.IsDigit).ToArray());
-        if (d.Length == 10) d = "7" + d;
-        else if (d.Length == 11 && d[0] == '8') d = "7" + d[1..];
-        return d.Length == 11 && d[0] == '7' ? "+" + d : null;
-    }
-
-    private static bool Allow(Queue<long> q, int max, long window)
+    /// <summary>Лимиты против массовых регистраций: не больше 10 в час с одного ПК и 120 в час по всему клубу.</summary>
+    private bool RegistrationAllowed(long pcId)
     {
         var now = Db.Now();
-        while (q.Count > 0 && now - q.Peek() > window) q.Dequeue();
-        if (q.Count >= max) return false;
-        q.Enqueue(now);
-        return true;
-    }
-
-    /// <summary>Лимиты: с одного ПК — 10 запросов кода в час, по клубу — 120, на один номер — 3.</summary>
-    private bool SmsAllowed(long pcId, string phone)
-    {
         lock (_regAll)
         {
-            if (!Allow(_regByPc.GetOrAdd(pcId, _ => new Queue<long>()), 10, 3600)) return false;
-            if (!Allow(_regAll, 120, 3600)) return false;
-            return Allow(_smsByPhone.GetOrAdd(phone, _ => new Queue<long>()), 3, 3600);
+            while (_regAll.Count > 0 && now - _regAll.Peek() > 3600) _regAll.Dequeue();
+            var q = _regByPc.GetOrAdd(pcId, _ => new Queue<long>());
+            while (q.Count > 0 && now - q.Peek() > 3600) q.Dequeue();
+            if (q.Count >= 10 || _regAll.Count >= 120) return false;
+            q.Enqueue(now);
+            _regAll.Enqueue(now);
+            return true;
         }
     }
 
-    private static string CodeHash(string phone, string code) => Security.Sha256(phone + ":" + code);
-
-    /// <summary>Шаг 1: проверяет данные, отправляет SMS-код. Гость в базе появится только после подтверждения кода.</summary>
-    public async Task<(bool ok, string? error, int resendSec, string? hint)> StartRegistrationAsync(Pc pc, string login, string password, string? birth, string? phoneRaw, ICodeDelivery delivery)
+    /// <summary>Регистрация гостя с клубного ПК. Возвращает то же, что и вход, чтобы гость сразу попал к выбору тарифа.</summary>
+    public (bool ok, string? error, Guest? guest, List<Tariff>? tariffs) Register(Pc pc, string login, string password, string? birth)
     {
         login = (login ?? "").Trim();
-        var phone = NormalizePhone(phoneRaw);
-        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", 0, null);
-        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", 0, null);
-        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", 0, null);
-        if (phone is null) return (false, "Введите номер телефона в формате +7 900 000-00-00", 0, null);
-        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", 0, null);
+        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", null, null);
+        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", null, null);
+        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", null, null);
+        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", null, null);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz).DateTime);
         var age = today.Year - born.Year - (today < born.AddYears(today.Year - born.Year) ? 1 : 0);
-        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", 0, null);
+        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", null, null);
+        if (!RegistrationAllowed(pc.Id)) return (false, "Слишком много регистраций, обратитесь к администратору", null, null);
 
-        using (var c = _db.Open())
-        {
-            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE login = $l", ("$l", login)) > 0) return (false, "Этот логин уже занят", 0, null);
-            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE phone = $p", ("$p", phone)) > 0) return (false, "Этот номер уже зарегистрирован", 0, null);
-        }
-        if (_pending.TryGetValue(phone, out var old) && Db.Now() - old.SentAt < 60)
-            return (false, $"Повторно отправить код можно через {60 - (Db.Now() - old.SentAt)} с", (int)(60 - (Db.Now() - old.SentAt)), null);
-        if (!SmsAllowed(pc.Id, phone)) return (false, "Слишком много запросов кода, попробуйте позже или обратитесь к администратору", 0, null);
-
-        string passHash;
+        Result created;
         _hashSlots.Wait();
-        try { passHash = Security.HashPassword(password); } finally { _hashSlots.Release(); }
-
-        var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
-        _pending[phone] = new PendingReg
-        {
-            Login = login, PassHash = passHash, Birth = born.ToString("yyyy-MM-dd"), CodeHash = CodeHash(phone, code),
-            Expires = Db.Now() + 600, SentAt = Db.Now(),
-        };
-        string? hint;
-        try { hint = await delivery.DeliverAsync(phone, code); }
-        catch (Exception ex)
-        {
-            // не получилось отправить: регистрацию не держим, гость может попробовать снова (лимит на номер уже учтён)
-            _pending.TryRemove(phone, out _);
-            System.Diagnostics.Debug.WriteLine($"[ClubShell.Server] доставка кода не удалась: {ex.Message}");
-            return (false, "Не удалось отправить код. Попробуйте позже или обратитесь к администратору.", 0, null);
-        }
-        return (true, null, 60, hint);
-    }
-
-    /// <summary>Шаг 2: проверяет код (5 попыток, 10 минут) и создаёт гостя с подтверждённым телефоном.</summary>
-    public (bool ok, string? error, Guest? guest, List<Tariff>? tariffs) ConfirmRegistration(Pc pc, string? phoneRaw, string? code)
-    {
-        var phone = NormalizePhone(phoneRaw);
-        if (phone is null || !_pending.TryGetValue(phone, out var p)) return (false, "Сначала запросите код", null, null);
-        if (Db.Now() > p.Expires) { _pending.TryRemove(phone, out _); return (false, "Код устарел, запросите новый", null, null); }
-        if (++p.Attempts > 5) { _pending.TryRemove(phone, out _); return (false, "Слишком много неверных кодов, запросите новый", null, null); }
-        if (!Security.FixedEquals(p.CodeHash, CodeHash(phone, (code ?? "").Trim()))) return (false, $"Неверный код (осталось попыток: {5 - p.Attempts})", null, null);
-
-        var created = CreateGuest(p.Login, "", 0, p.Birth, phone, p.PassHash);
-        _pending.TryRemove(phone, out _);
-        if (!created.Ok) return (false, created.Error, null, null);
+        try { created = CreateGuest(login, password, 0, born.ToString("yyyy-MM-dd")); }
+        finally { _hashSlots.Release(); }
+        if (!created.Ok) return (false, created.Error!.Contains("уже есть") ? "Этот логин уже занят" : created.Error, null, null);
 
         using var c = _db.Open();
-        var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", p.Login));
+        var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", login));
         return (true, null, g, Tariffs(pc.Zone));
     }
 

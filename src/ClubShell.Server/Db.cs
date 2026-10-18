@@ -77,10 +77,6 @@ public sealed class Db
             CREATE INDEX IF NOT EXISTS ix_tx_kind_ts ON tx(kind, ts);
             """);
 
-        // Миграция: телефон гостя (подтверждается SMS-кодом при регистрации), уникален.
-        var hasPhone = Query(c, "PRAGMA table_info(guests)", r => r.GetString(1)).Contains("phone");
-        if (!hasPhone) Exec(c, "ALTER TABLE guests ADD COLUMN phone TEXT");
-        Exec(c, "CREATE UNIQUE INDEX IF NOT EXISTS ix_guests_phone ON guests(phone) WHERE phone IS NOT NULL");
     }
 
     public static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();

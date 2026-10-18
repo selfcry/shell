@@ -35,22 +35,6 @@ club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", true));
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
 builder.Services.AddSingleton<PcHub>();
-builder.Services.AddSingleton<StubSmsSender>();
-// Как доставляется код подтверждения телефона (по приоритету):
-//   1) Exolve__ApiKey + Exolve__Sender — настоящие SMS через МТС Exolve;
-//   2) Telegram__BotToken — бесплатно через Telegram-бота;
-//   3) иначе заглушка (код в журнале сервера и в админке) — только для разработки.
-if (!string.IsNullOrWhiteSpace(builder.Configuration["Exolve:ApiKey"]))
-{
-    builder.Services.AddSingleton<ICodeDelivery, ExolveSmsSender>();
-}
-else if (!string.IsNullOrWhiteSpace(builder.Configuration["Telegram:BotToken"]))
-{
-    builder.Services.AddSingleton<TelegramCodeDelivery>();
-    builder.Services.AddSingleton<ICodeDelivery>(sp => sp.GetRequiredService<TelegramCodeDelivery>());
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<TelegramCodeDelivery>());
-}
-else builder.Services.AddSingleton<ICodeDelivery>(sp => sp.GetRequiredService<StubSmsSender>());
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -89,19 +73,11 @@ pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
         : Results.Ok(new { ok = false, error });
 });
 
-pc.MapPost("/register/start", async (HttpContext ctx, RegisterStartReq req, ICodeDelivery delivery) =>
+pc.MapPost("/register", (HttpContext ctx, RegisterReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     club.Touch(p.Id);
-    var (ok, error, resendSec, hint) = await club.StartRegistrationAsync(p, req.Username, req.Password, req.Birth, req.Phone, delivery);
-    return Results.Ok(new { ok, error, resendSec, hint });
-});
-
-pc.MapPost("/register/confirm", (HttpContext ctx, RegisterConfirmReq req) =>
-{
-    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
-    club.Touch(p.Id);
-    var (ok, error, guest, tariffs) = club.ConfirmRegistration(p, req.Phone, req.Code);
+    var (ok, error, guest, tariffs) = club.Register(p, req.Username, req.Password, req.Birth);
     return ok
         ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, packages = tariffs!.Select(Pkg) })
         : Results.Ok(new { ok = false, error });
@@ -178,8 +154,7 @@ admin.MapPost("/pcs/{id:long}/command", async (long id, CommandReq req, PcHub hu
     return Results.Ok(new { ok = true, delivered });
 });
 
-admin.MapGet("/guests", (string? q) => Results.Ok(club.Guests(q).Select(g => new { id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created, phone = g.Phone })));
-admin.MapGet("/sms-outbox", (StubSmsSender sms) => Results.Ok(sms.Outbox())); // последние «отправленные» SMS (пока заглушка)
+admin.MapGet("/guests", (string? q) => Results.Ok(club.Guests(q).Select(g => new { id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created })));
 admin.MapPost("/guests", (NewGuestReq req) =>
 {
     var r = club.CreateGuest(req.Login, req.Password, req.Balance ?? 0, req.Birth);

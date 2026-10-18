@@ -288,12 +288,8 @@ internal sealed class LockerForm : Form
                     await HandleLoginAsync(Str(root, "username"), Str(root, "password"));
                     break;
 
-                case "registerStart":
-                    await HandleRegisterStartAsync(Str(root, "username"), Str(root, "password"), Str(root, "birth"), Str(root, "phone"));
-                    break;
-
-                case "registerConfirm":
-                    await HandleRegisterConfirmAsync(Str(root, "phone"), Str(root, "code"));
+                case "register":
+                    await HandleRegisterAsync(Str(root, "username"), Str(root, "password"), Str(root, "birth"));
                     break;
 
                 case "startSession":
@@ -346,25 +342,7 @@ internal sealed class LockerForm : Form
         }
     }
 
-    private async Task HandleRegisterStartAsync(string user, string password, string birth, string phone)
-    {
-        if (!_linkOnline)
-        {
-            Post(new { type = "registerCodeSent", ok = false, error = _linkReason ?? "Нет связи с сервером" });
-            return;
-        }
-        try
-        {
-            var r = await _api.StartRegistrationAsync(_pcName, user, password, birth, phone);
-            Post(new { type = "registerCodeSent", ok = r.Ok, error = r.Error, phone, resendSec = r.ResendSec, hint = r.Hint });
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            Post(new { type = "registerCodeSent", ok = false, error = "Нет связи с сервером" });
-        }
-    }
-
-    private async Task HandleRegisterConfirmAsync(string phone, string code)
+    private async Task HandleRegisterAsync(string user, string password, string birth)
     {
         if (!_linkOnline)
         {
@@ -373,7 +351,7 @@ internal sealed class LockerForm : Form
         }
         try
         {
-            var r = await _api.ConfirmRegistrationAsync(_pcName, phone, code);
+            var r = await _api.RegisterAsync(_pcName, user, password, birth);
             if (r.Ok) _session.SetUser(r.User!, r.Balance);
             Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages });
         }

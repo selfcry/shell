@@ -6,6 +6,4 @@ public record TariffPackage(string Id, string Name, int Minutes, int Price, bool
 public record LoginResult(bool Ok, string? Error = null, string? User = null, int Balance = 0,
     IReadOnlyList<TariffPackage>? Packages = null);
 
-public record CodeResult(bool Ok, string? Error = null, int ResendSec = 0, string? Hint = null);
-
 public record StartResult(bool Ok, string? Error = null, int Balance = 0, int Minutes = 0);

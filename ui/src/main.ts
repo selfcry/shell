@@ -20,8 +20,7 @@ const backdrop = el("div", { class: "backdrop" });
 const intro = buildIntro(() => show("login"), (pin) => send({ type: "adminExit", pin }));
 const login = buildLogin({
   onLogin: (u, p) => send({ type: "login", username: u, password: p }),
-  onRegisterStart: (u, p, birth, phone) => send({ type: "registerStart", username: u, password: p, birth, phone }),
-  onRegisterConfirm: (phone, code) => send({ type: "registerConfirm", phone, code }),
+  onRegister: (u, p, birth) => send({ type: "register", username: u, password: p, birth }),
   onBack: () => show("intro"),
 });
 const tariffs = buildTariffs((id) => send({ type: "startSession", packageId: id }), () => show("intro"));
@@ -72,9 +71,6 @@ onMessage((msg: FromHost) => {
     case "mode":
       if (msg.mode === "session") show("desktop");
       else if (current === "desktop") show("intro");
-      break;
-    case "registerCodeSent":
-      login.codeSent(msg.ok, msg.error, msg.resendSec ?? 60, msg.hint);
       break;
     case "loginResult":
       if (msg.ok) {
