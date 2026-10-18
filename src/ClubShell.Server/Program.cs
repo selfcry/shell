@@ -36,7 +36,21 @@ builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
 builder.Services.AddSingleton<PcHub>();
 builder.Services.AddSingleton<StubSmsSender>();
-builder.Services.AddSingleton<ISmsSender>(sp => sp.GetRequiredService<StubSmsSender>()); // заменить на настоящего провайдера SMS
+// Как доставляется код подтверждения телефона (по приоритету):
+//   1) Exolve__ApiKey + Exolve__Sender — настоящие SMS через МТС Exolve;
+//   2) Telegram__BotToken — бесплатно через Telegram-бота;
+//   3) иначе заглушка (код в журнале сервера и в админке) — только для разработки.
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Exolve:ApiKey"]))
+{
+    builder.Services.AddSingleton<ICodeDelivery, ExolveSmsSender>();
+}
+else if (!string.IsNullOrWhiteSpace(builder.Configuration["Telegram:BotToken"]))
+{
+    builder.Services.AddSingleton<TelegramCodeDelivery>();
+    builder.Services.AddSingleton<ICodeDelivery>(sp => sp.GetRequiredService<TelegramCodeDelivery>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<TelegramCodeDelivery>());
+}
+else builder.Services.AddSingleton<ICodeDelivery>(sp => sp.GetRequiredService<StubSmsSender>());
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -75,12 +89,12 @@ pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
         : Results.Ok(new { ok = false, error });
 });
 
-pc.MapPost("/register/start", async (HttpContext ctx, RegisterStartReq req, StubSmsSender sms) =>
+pc.MapPost("/register/start", async (HttpContext ctx, RegisterStartReq req, ICodeDelivery delivery) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     club.Touch(p.Id);
-    var (ok, error, resendSec) = await club.StartRegistrationAsync(p, req.Username, req.Password, req.Birth, req.Phone, sms);
-    return Results.Ok(new { ok, error, resendSec });
+    var (ok, error, resendSec, hint) = await club.StartRegistrationAsync(p, req.Username, req.Password, req.Birth, req.Phone, delivery);
+    return Results.Ok(new { ok, error, resendSec, hint });
 });
 
 pc.MapPost("/register/confirm", (HttpContext ctx, RegisterConfirmReq req) =>

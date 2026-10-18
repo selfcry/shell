@@ -2,28 +2,33 @@ using System.Collections.Concurrent;
 
 namespace ClubShell.Server;
 
-public interface ISmsSender
+/// <summary>
+/// Как гость получает код подтверждения телефона. Возвращает подсказку для экрана ввода кода (или null).
+/// Реализации: StubSmsSender (заглушка), TelegramCodeDelivery (бесплатно, через бота), в будущем — настоящий SMS-провайдер.
+/// </summary>
+public interface ICodeDelivery
 {
-    Task SendAsync(string phone, string text);
+    Task<string?> DeliverAsync(string phone, string code);
 }
 
 /// <summary>
-/// Заглушка отправки SMS: ничего не отправляет, пишет сообщение в журнал сервера и хранит последние 50 в памяти
-/// (админ видит их в API /api/admin/sms-outbox). Настоящего провайдера (SMS.ru, SMSC и т.п.) подключают заменой этого класса.
+/// Заглушка: ничего не отправляет, пишет сообщение в журнал сервера и хранит последние 50 в памяти
+/// (админ видит их в API /api/admin/sms-outbox).
 /// </summary>
-public sealed class StubSmsSender : ISmsSender
+public sealed class StubSmsSender : ICodeDelivery
 {
     private readonly ILogger<StubSmsSender> _log;
     private readonly ConcurrentQueue<(long ts, string phone, string text)> _outbox = new();
 
     public StubSmsSender(ILogger<StubSmsSender> log) => _log = log;
 
-    public Task SendAsync(string phone, string text)
+    public Task<string?> DeliverAsync(string phone, string code)
     {
+        var text = $"Мираж PRO: код подтверждения {code}. Никому не сообщайте его.";
         _log.LogWarning("SMS (заглушка) на {Phone}: {Text}", phone, text);
         _outbox.Enqueue((Db.Now(), phone, text));
         while (_outbox.Count > 50) _outbox.TryDequeue(out _);
-        return Task.CompletedTask;
+        return Task.FromResult<string?>(null);
     }
 
     public IEnumerable<object> Outbox() => _outbox.Reverse().Select(m => new { ts = m.ts, phone = m.phone, text = m.text });

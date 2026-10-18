@@ -373,27 +373,27 @@ public sealed class ClubService
     private static string CodeHash(string phone, string code) => Security.Sha256(phone + ":" + code);
 
     /// <summary>Шаг 1: проверяет данные, отправляет SMS-код. Гость в базе появится только после подтверждения кода.</summary>
-    public async Task<(bool ok, string? error, int resendSec)> StartRegistrationAsync(Pc pc, string login, string password, string? birth, string? phoneRaw, ISmsSender sms)
+    public async Task<(bool ok, string? error, int resendSec, string? hint)> StartRegistrationAsync(Pc pc, string login, string password, string? birth, string? phoneRaw, ICodeDelivery delivery)
     {
         login = (login ?? "").Trim();
         var phone = NormalizePhone(phoneRaw);
-        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", 0);
-        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", 0);
-        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", 0);
-        if (phone is null) return (false, "Введите номер телефона в формате +7 900 000-00-00", 0);
-        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", 0);
+        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", 0, null);
+        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", 0, null);
+        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", 0, null);
+        if (phone is null) return (false, "Введите номер телефона в формате +7 900 000-00-00", 0, null);
+        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", 0, null);
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz).DateTime);
         var age = today.Year - born.Year - (today < born.AddYears(today.Year - born.Year) ? 1 : 0);
-        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", 0);
+        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", 0, null);
 
         using (var c = _db.Open())
         {
-            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE login = $l", ("$l", login)) > 0) return (false, "Этот логин уже занят", 0);
-            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE phone = $p", ("$p", phone)) > 0) return (false, "Этот номер уже зарегистрирован", 0);
+            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE login = $l", ("$l", login)) > 0) return (false, "Этот логин уже занят", 0, null);
+            if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE phone = $p", ("$p", phone)) > 0) return (false, "Этот номер уже зарегистрирован", 0, null);
         }
         if (_pending.TryGetValue(phone, out var old) && Db.Now() - old.SentAt < 60)
-            return (false, $"Повторно отправить код можно через {60 - (Db.Now() - old.SentAt)} с", (int)(60 - (Db.Now() - old.SentAt)));
-        if (!SmsAllowed(pc.Id, phone)) return (false, "Слишком много запросов кода, попробуйте позже или обратитесь к администратору", 0);
+            return (false, $"Повторно отправить код можно через {60 - (Db.Now() - old.SentAt)} с", (int)(60 - (Db.Now() - old.SentAt)), null);
+        if (!SmsAllowed(pc.Id, phone)) return (false, "Слишком много запросов кода, попробуйте позже или обратитесь к администратору", 0, null);
 
         string passHash;
         _hashSlots.Wait();
@@ -405,8 +405,16 @@ public sealed class ClubService
             Login = login, PassHash = passHash, Birth = born.ToString("yyyy-MM-dd"), CodeHash = CodeHash(phone, code),
             Expires = Db.Now() + 600, SentAt = Db.Now(),
         };
-        await sms.SendAsync(phone, $"Мираж PRO: код подтверждения {code}. Никому не сообщайте его.");
-        return (true, null, 60);
+        string? hint;
+        try { hint = await delivery.DeliverAsync(phone, code); }
+        catch (Exception ex)
+        {
+            // не получилось отправить: регистрацию не держим, гость может попробовать снова (лимит на номер уже учтён)
+            _pending.TryRemove(phone, out _);
+            System.Diagnostics.Debug.WriteLine($"[ClubShell.Server] доставка кода не удалась: {ex.Message}");
+            return (false, "Не удалось отправить код. Попробуйте позже или обратитесь к администратору.", 0, null);
+        }
+        return (true, null, 60, hint);
     }
 
     /// <summary>Шаг 2: проверяет код (5 попыток, 10 минут) и создаёт гостя с подтверждённым телефоном.</summary>
