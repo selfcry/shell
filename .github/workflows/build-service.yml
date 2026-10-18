@@ -1,4 +1,4 @@
-name: Сборка: служба-страж (Service)
+name: "Сборка: служба-страж (Service)"
 
 on:
   push:

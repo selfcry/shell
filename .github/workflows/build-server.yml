@@ -1,4 +1,4 @@
-name: Сборка: сервер клуба (Server, Linux)
+name: "Сборка: сервер клуба (Server, Linux)"
 
 on:
   push:
