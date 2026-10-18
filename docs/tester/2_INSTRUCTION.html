@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Инструкция тестеру — Мираж PRO</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box} body{margin:0;font:16px/1.55 Segoe UI,Arial,sans-serif;background:#f4f4f6;color:#1b1b1f}
+header{background:#111;color:#fff;padding:28px 6vw} header h1{margin:0 0 6px;font-size:28px} header p{margin:0;color:#bbb}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 5vw 80px}
+.box{background:#fff;border-radius:14px;padding:18px 22px;margin:18px 0;border:1px solid #e3e3e8}
+.box h2{margin:0 0 8px;font-size:18px} code{background:#eee;padding:1px 6px;border-radius:5px;font-size:14px}
+section{margin:34px 0} section>h2{font-size:22px;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+.num{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#ff6b00;color:#fff;font-size:16px}
+figure{margin:0 0 14px} figure img{width:100%;max-width:760px;border-radius:10px;border:1px solid #ddd;display:block}
+figure.small img{max-width:520px;margin-top:10px} figcaption{font-size:13px;color:#666;margin-top:4px}
+.step{background:#fff;border-radius:14px;padding:16px 20px;margin:14px 0;border:1px solid #e3e3e8}
+.step h3{margin:0 0 10px;font-size:17px} .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:800px){.cols{grid-template-columns:1fr}}
+.lbl{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px} .act{color:#c25100} .exp{color:#1a7f3c}
+ol,ul{margin:0;padding-left:20px} li{margin:4px 0}
+.res{margin-top:12px;padding-top:10px;border-top:1px dashed #ddd;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.res label{cursor:pointer;white-space:nowrap} .note{flex:1;min-width:240px;padding:7px 10px;border:1px solid #ccc;border-radius:8px;font:inherit}
+.step.ok{border-left:5px solid #1a7f3c} .step.bad{border-left:5px solid #d93025} .step.q{border-left:5px solid #e8a100}
+.bar{position:sticky;bottom:0;background:#111;color:#fff;padding:12px 6vw;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+button{background:#ff6b00;border:0;color:#fff;font:700 15px Segoe UI,Arial;padding:10px 18px;border-radius:10px;cursor:pointer}
+textarea{width:100%;height:240px;margin-top:10px;font:13px Consolas,monospace;padding:10px;border-radius:10px;border:1px solid #ccc}
+.info input{padding:7px 10px;border:1px solid #ccc;border-radius:8px;font:inherit;margin:4px 8px 4px 0}
+</style></head><body>
+<header><h1>Инструкция тестеру</h1><p>Клубная оболочка «Мираж PRO»: сервер + оболочка гостя + админ-панель</p></header>
+<div class="wrap">
+<div class="box"><h2>Как этим пользоваться</h2>
+Идите по шагам сверху вниз. В каждом шаге слева написано, <b>что нажать</b>, справа — <b>что должно получиться</b>. После шага выберите
+<b>Работает</b>, <b>Не работает</b> или <b>Странно / не понял</b> (и коротко напишите, что произошло). В конце страницы нажмите <b>«Собрать отчёт»</b> —
+текст можно скопировать и прислать. Отметки сохраняются в этом браузере, страницу можно закрывать и открывать снова.</div>
+<div class="box"><h2>Тестовые данные</h2>
+Гость: логин <code>demo</code>, пароль <code>demo</code> (на балансе 600 ₽). Гость: <code>vip</code> / <code>vipvip</code> (2000 ₽).<br>
+Админка: адрес <code>http://127.0.0.1:5080</code>, ключ администратора — в буфере обмена после запуска (или файл <code>work\data\admin-key.txt</code>).<br>
+<b>Как выйти из оболочки:</b> на заставке нажмите <code>Ctrl+Shift+F12</code>, введите PIN <code>0000</code>. Остановить всё: <b>STOP_ALL.cmd</b>.<br>
+Картинки в инструкции взяты из тестовой версии интерфейса: цвета и расположение те же, но данные (имена, цифры) у вас будут свои.</div>
+<div class="box info"><h2>О вас и компьютере</h2>
+<input id="who" placeholder="Ваше имя"> <input id="win" placeholder="Версия Windows (Win+R → winver)"> <input id="scr" placeholder="Разрешение экрана">
+</div>
+<section><h2><span class="num">0</span>Перед началом</h2>
+<div class="step" data-id="0.1" data-title="Запуск">
+<h3>0.1. Запуск</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Откройте папку, куда распаковали архив.</li><li>Дважды щёлкните <b>START_TEST.cmd</b>. Если Windows предупредила («SmartScreen защитил ваш компьютер») — нажмите <b>Подробнее</b> → <b>Выполнить в любом случае</b>.</li><li>Подождите 20–40 секунд. В чёрном окне побегут строки.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В конце окна написано <b>«Автопроверки сервера: все пройдены»</b>, все строки зелёные (<b>OK</b>).</li><li>Затем сами откроются два окна: оболочка на весь экран и админ-панель.</li><li>Красная строка <b>ОШИБКА</b> — сделайте скриншот окна и отметьте <b>«Не работает»</b>.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r0.1" value="+"> Работает</label>
+<label><input type="radio" name="r0.1" value="-"> Не работает</label>
+<label><input type="radio" name="r0.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">1</span>Админ-панель: подключение и обзор</h2>
+<figure><img src="images/admin-1-dashboard.jpg" alt="Окно «Мираж PRO — администратор»"><figcaption>Окно «Мираж PRO — администратор»</figcaption></figure>
+<div class="step" data-id="1.1" data-title="Подключение к серверу">
+<h3>1.1. Подключение к серверу</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В окне админки в поле <b>Адрес сервера</b> введите <code>http://127.0.0.1:5080</code>.</li><li>В поле <b>Ключ администратора</b> нажмите <b>Ctrl+V</b> (скрипт уже скопировал ключ). Если не вставляется — откройте файл <code>work\data\admin-key.txt</code>, скопируйте оттуда.</li><li>Нажмите <b>Подключиться</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается <b>Дашборд</b> с пятью карточками: «Компьютеры онлайн», «Идут сеансы», «Выручка сегодня», «Пополнения сегодня», «Гостей в базе».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r1.1" value="+"> Работает</label>
+<label><input type="radio" name="r1.1" value="-"> Не работает</label>
+<label><input type="radio" name="r1.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="1.2" data-title="Компьютеры">
+<h3>1.2. Компьютеры</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В меню слева нажмите <b>Компьютеры</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Есть карточка <b>VM-PC-01</b> с зелёной рамкой и подписью «Свободен». Если «Не в сети» (серая) — оболочка не подключилась к серверу, это ошибка.</li></ul></div></div><figure class="small"><img src="images/admin-2-pcs.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r1.2" value="+"> Работает</label>
+<label><input type="radio" name="r1.2" value="-"> Не работает</label>
+<label><input type="radio" name="r1.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="1.3" data-title="Гости и тарифы">
+<h3>1.3. Гости и тарифы</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Меню слева → <b>Гости</b>. Затем → <b>Тарифы</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В гостях есть <b>demo</b> и <b>vip</b>. Строка поиска фильтрует по логину.</li><li>В тарифах: 1 час — 140 ₽, 3 часа — 350 ₽, 5 часов — 500 ₽, Ночь — 550 ₽ (22:00–08:00).</li></ul></div></div><figure class="small"><img src="images/admin-5-tariffs.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r1.3" value="+"> Работает</label>
+<label><input type="radio" name="r1.3" value="-"> Не работает</label>
+<label><input type="radio" name="r1.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">2</span>Оболочка: вход и сеанс гостя</h2>
+<figure><img src="images/shell-1-intro.jpg" alt="Заставка оболочки"><figcaption>Заставка оболочки</figcaption></figure>
+<div class="step" data-id="2.1" data-title="Заставка и вход">
+<h3>2.1. Заставка и вход</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Перейдите в окно оболочки (чёрный экран с надписью МИРАЖ).</li><li>Нажмите клавишу <b>Пробел</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Появляется форма <b>Вход</b> с полями «Логин» и «Пароль».</li></ul></div></div><figure class="small"><img src="images/shell-2-login.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r2.1" value="+"> Работает</label>
+<label><input type="radio" name="r2.1" value="-"> Не работает</label>
+<label><input type="radio" name="r2.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="2.2" data-title="Неверный пароль">
+<h3>2.2. Неверный пароль</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Логин <code>demo</code>, пароль <code>12345</code> → кнопка <b>Войти</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Красная понятная ошибка «Неверный логин или пароль». Программа не вылетает.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r2.2" value="+"> Работает</label>
+<label><input type="radio" name="r2.2" value="-"> Не работает</label>
+<label><input type="radio" name="r2.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="2.3" data-title="Вход и выбор тарифа">
+<h3>2.3. Вход и выбор тарифа</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Логин <code>demo</code>, пароль <code>demo</code> → <b>Войти</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Экран «Привет, demo», баланс <b>600 ₽</b>. Четыре тарифа: 1 час, 3 часа, 5 часов, Ночь.</li><li>«Ночь» серая и не нажимается (днём доступна только с 22:00 до 08:00).</li></ul></div></div><figure class="small"><img src="images/shell-4-tariffs.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r2.3" value="+"> Работает</label>
+<label><input type="radio" name="r2.3" value="-"> Не работает</label>
+<label><input type="radio" name="r2.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="2.4" data-title="Начать сеанс">
+<h3>2.4. Начать сеанс</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите плитку <b>1 час (140 ₽)</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается рабочий стол: сверху вкладки «Игры» / «Приложения», справа карточка гостя <b>demo</b> с таймером около <b>59:59</b> и балансом 460 ₽.</li><li>Внизу тонкая панель задач. Всё выглядит целым, ничего не налезает.</li></ul></div></div><figure class="small"><img src="images/shell-5-desktop.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r2.4" value="+"> Работает</label>
+<label><input type="radio" name="r2.4" value="-"> Не работает</label>
+<label><input type="radio" name="r2.4" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="2.5" data-title="Сеанс виден в админке">
+<h3>2.5. Сеанс виден в админке</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Перейдите в админку → <b>Компьютеры</b>.</li><li>Затем <b>Сеансы</b>, затем <b>Дашборд</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>VM-PC-01 стала <b>оранжевой</b>, на ней видны <b>demo</b> и оставшееся время.</li><li>В «Сеансах» есть активный сеанс demo. На Дашборде «Выручка сегодня» выросла на 140 ₽, «Идут сеансы» = 1.</li></ul></div></div><figure class="small"><img src="images/admin-6-sessions.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r2.5" value="+"> Работает</label>
+<label><input type="radio" name="r2.5" value="-"> Не работает</label>
+<label><input type="radio" name="r2.5" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">3</span>Управление из админки (во время сеанса)</h2>
+<figure><img src="images/admin-3-pc-card.jpg" alt="Карточка компьютера"><figcaption>Карточка компьютера</figcaption></figure>
+<div class="step" data-id="3.1" data-title="Добавить время">
+<h3>3.1. Добавить время</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Админка → <b>Компьютеры</b> → нажмите на оранжевую карточку <b>VM-PC-01</b>.</li><li>В окне нажмите <b>+15 мин</b>. Переключитесь на оболочку и посмотрите на таймер.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Через 5–20 секунд таймер в оболочке стал примерно на 15 минут больше (≈1:14:xx).</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r3.1" value="+"> Работает</label>
+<label><input type="radio" name="r3.1" value="-"> Не работает</label>
+<label><input type="radio" name="r3.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="3.2" data-title="Сообщение гостю">
+<h3>3.2. Сообщение гостю</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В той же карточке нажмите <b>Сообщение</b>, введите «Тест», нажмите <b>Отправить</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В оболочке внизу всплывает уведомление «Тест».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r3.2" value="+"> Работает</label>
+<label><input type="radio" name="r3.2" value="-"> Не работает</label>
+<label><input type="radio" name="r3.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="3.3" data-title="Завершить сеанс">
+<h3>3.3. Завершить сеанс</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В карточке нажмите <b>Завершить сеанс</b> → в вопросе снова <b>Завершить</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Оболочка сама возвращается на заставку (МИРАЖ, «Нажмите ПРОБЕЛ»).</li><li>На экране на пару секунд: «Тестовый режим: перезагрузка и очистка пропущены». В боевой установке тут ПК перезагружается, в тесте — нет.</li><li>В админке ПК снова «Свободен». <b>Кнопки «Перезагрузить» и «Выключить» в тесте не нажимайте</b>.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r3.3" value="+"> Работает</label>
+<label><input type="radio" name="r3.3" value="-"> Не работает</label>
+<label><input type="radio" name="r3.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">4</span>Регистрация нового гостя и деньги</h2>
+<figure><img src="images/shell-3-register.jpg" alt="Форма регистрации"><figcaption>Форма регистрации</figcaption></figure>
+<div class="step" data-id="4.1" data-title="Регистрация">
+<h3>4.1. Регистрация</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В оболочке: <b>Пробел</b> → <b>Нет аккаунта? Зарегистрироваться</b>.</li><li>Заполните: Логин <code>test1</code>, Пароль <code>secret123</code>, Повторите пароль <code>secret123</code>, Дата рождения (любая, например 01.01.2000), поставьте галочку «Согласен…».</li><li>Нажмите <b>Зарегистрироваться</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Открывается выбор тарифа, баланс <b>0 ₽</b>, все платные тарифы серые (не хватает средств).</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.1" value="+"> Работает</label>
+<label><input type="radio" name="r4.1" value="-"> Не работает</label>
+<label><input type="radio" name="r4.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="4.2" data-title="Ошибки регистрации">
+<h3>4.2. Ошибки регистрации</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите <b>Выйти</b>, снова пробел → «Нет аккаунта?». Проверьте по очереди: тот же логин <code>test1</code>; пароль короче 6 символов; разные пароли; без даты рождения; без галочки.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Каждый раз понятное сообщение красным (например, «Этот логин уже занят», «Пароли не совпадают»). Программа не вылетает.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.2" value="+"> Работает</label>
+<label><input type="radio" name="r4.2" value="-"> Не работает</label>
+<label><input type="radio" name="r4.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="4.3" data-title="Гость в админке">
+<h3>4.3. Гость в админке</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Админка → <b>Гости</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Новый гость <b>test1</b> в списке, баланс 0 ₽, статус «активен».</li></ul></div></div><figure class="small"><img src="images/admin-4-guests.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r4.3" value="+"> Работает</label>
+<label><input type="radio" name="r4.3" value="-"> Не работает</label>
+<label><input type="radio" name="r4.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="4.4" data-title="Пополнение и списание">
+<h3>4.4. Пополнение и списание</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В строке test1 нажмите <b>Пополнить</b>, сумма <code>200</code> → <b>Пополнить</b>.</li><li>Затем <b>Списать</b>, сумма <code>1000</code> → <b>Списать</b>.</li><li>Нажмите <b>История</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Баланс стал 200 ₽.</li><li>Списание 1000 ₽ отклонено («Недостаточно средств для списания»), баланс остался 200.</li><li>В истории видна операция +200.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.4" value="+"> Работает</label>
+<label><input type="radio" name="r4.4" value="-"> Не работает</label>
+<label><input type="radio" name="r4.4" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="4.5" data-title="Блокировка">
+<h3>4.5. Блокировка</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В строке test1 нажмите <b>Блок</b>. В оболочке (Пробел → Вход) попробуйте войти test1 / secret123.</li><li>Потом в админке нажмите <b>Разблокировать</b> и войдите снова.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Заблокированному вход отказан («Учётная запись заблокирована»). После разблокировки вход работает, на балансе 200 ₽, доступен только «1 час».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.5" value="+"> Работает</label>
+<label><input type="radio" name="r4.5" value="-"> Не работает</label>
+<label><input type="radio" name="r4.5" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="4.6" data-title="Смена пароля">
+<h3>4.6. Смена пароля</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В админке у test1 нажмите <b>Пароль</b>, введите <code>newpass99</code> → <b>Сменить</b>. Войдите в оболочке со старым, затем с новым паролем.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Старый пароль не подходит, новый подходит.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r4.6" value="+"> Работает</label>
+<label><input type="radio" name="r4.6" value="-"> Не работает</label>
+<label><input type="radio" name="r4.6" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">5</span>Тарифы и сеансы из админки</h2>
+<figure><img src="images/admin-5-tariffs.jpg" alt="Вкладка «Тарифы»"><figcaption>Вкладка «Тарифы»</figcaption></figure>
+<div class="step" data-id="5.1" data-title="Новый тариф">
+<h3>5.1. Новый тариф</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Админка → <b>Тарифы</b> → <b>Новый тариф</b>. Код <code>t30</code>, название «30 минут», минут <code>30</code>, цена <code>80</code> → <b>Сохранить</b>.</li><li>В оболочке войдите test1 (баланс 200).</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>В списке тарифов есть «30 минут — 80 ₽».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r5.1" value="+"> Работает</label>
+<label><input type="radio" name="r5.1" value="-"> Не работает</label>
+<label><input type="radio" name="r5.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="5.2" data-title="Выключить тариф">
+<h3>5.2. Выключить тариф</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>В админке у «30 минут» нажмите <b>Выключить</b>. В оболочке выйдите и войдите снова.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Тарифа «30 минут» в списке нет, в админке он отмечен «выключен».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r5.2" value="+"> Работает</label>
+<label><input type="radio" name="r5.2" value="-"> Не работает</label>
+<label><input type="radio" name="r5.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="5.3" data-title="Список сеансов">
+<h3>5.3. Список сеансов</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Начните сеанс гостем test1 («1 час»). Админка → <b>Сеансы</b>: переключатели <b>Активные</b> / <b>Все</b>.</li><li>У активного сеанса нажмите <b>+15</b>, затем <b>Завершить</b> → подтвердите.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Активные показывают только идущие, «Все» — и завершённые с причиной. «+15» добавляет время, «Завершить» возвращает оболочку на заставку.</li></ul></div></div><figure class="small"><img src="images/admin-6-sessions.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r5.3" value="+"> Работает</label>
+<label><input type="radio" name="r5.3" value="-"> Не работает</label>
+<label><input type="radio" name="r5.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">6</span>Рабочий стол и панель задач (в сеансе)</h2>
+<figure><img src="images/shell-6-taskbar.jpg" alt="Панель задач внизу экрана"><figcaption>Панель задач внизу экрана</figcaption></figure>
+<div class="step" data-id="6.1" data-title="Игры и приложения">
+<h3>6.1. Игры и приложения</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Начните сеанс (demo, «1 час»). На рабочем столе: вкладки <b>Игры</b> и <b>Приложения</b>, поле <b>Поиск по названию</b> (введите «dota»), плашки-фильтры (<b>Шутеры</b>, <b>MOBA</b>…).</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Вкладки переключаются, поиск и фильтры работают. Видны только установленные на этом ПК игры (на чистой Windows это может быть мало). Обложки пока заглушки с буквами.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r6.1" value="+"> Работает</label>
+<label><input type="radio" name="r6.1" value="-"> Не работает</label>
+<label><input type="radio" name="r6.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="6.2" data-title="Запуск программы и панель задач">
+<h3>6.2. Запуск программы и панель задач</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите <b>Win</b> → откройте «Блокнот» (или нажмите карточку приложения, если есть Chrome).</li><li>В панели внизу найдите кнопку Блокнота. Нажмите на неё (свернётся), ещё раз (развернётся). Нажмите <b>×</b> на кнопке — окно закроется.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Окно появляется в панели со своим <b>значком</b> и названием. Нет лишней кнопки «Microsoft Edge WebView2».</li><li>Панель стоит у нижнего края; развёрнутое окно не заходит под неё. Системной панели Windows не видно.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r6.2" value="+"> Работает</label>
+<label><input type="radio" name="r6.2" value="-"> Не работает</label>
+<label><input type="radio" name="r6.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="6.3" data-title="Кнопки панели">
+<h3>6.3. Кнопки панели</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li><b>Рабочий стол</b> (слева) — сворачивает окна и показывает рабочий стол клуба.</li><li>Значок динамика — выключает звук, слайдер рядом — громкость.</li><li>Рядом с сетью зелёный/жёлтый значок — <b>пинг</b> в мс. Нажмите <b>Тест скорости</b>.</li><li>Справа часы и дата.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Кнопки реагируют. Без интернета «Тест скорости» может показать ошибку — это нормально.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r6.3" value="+"> Работает</label>
+<label><input type="radio" name="r6.3" value="-"> Не работает</label>
+<label><input type="radio" name="r6.3" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="6.4" data-title="Диспетчер задач клуба">
+<h3>6.4. Диспетчер задач клуба</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите кнопку <b>Диспетчер</b> в панели (или <b>Ctrl+Shift+Esc</b>).</li><li>В окне нажмите на <b>Снять</b> у «Блокнота» — кнопка меняется на <b>Точно?</b>, нажмите ещё раз.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Окно открывается <b>быстро</b> (меньше секунды). В списке «Приложения» и «Фоновые процессы», проценты ЦП и память. Блокнот закрылся. Системных процессов и самой оболочки в списке нет.</li></ul></div></div><figure class="small"><img src="images/shell-7-taskmgr.jpg" alt=""></figure>
+<div class="res"><label><input type="radio" name="r6.4" value="+"> Работает</label>
+<label><input type="radio" name="r6.4" value="-"> Не работает</label>
+<label><input type="radio" name="r6.4" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="6.5" data-title="Завершение сеанса гостем">
+<h3>6.5. Завершение сеанса гостем</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Нажмите значок питания справа вверху (рядом с таймером).</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Появляется окно «Завершить сеанс?» с текстом про перезагрузку и удаление файлов, кнопки <b>Остаться</b> и <b>Завершить сеанс</b>. «Остаться» закрывает окно, «Завершить сеанс» возвращает на заставку.</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r6.5" value="+"> Работает</label>
+<label><input type="radio" name="r6.5" value="-"> Не работает</label>
+<label><input type="radio" name="r6.5" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section><section><h2><span class="num">7</span>Отказ сервера</h2>
+<div class="step" data-id="7.1" data-title="Сервер недоступен">
+<h3>7.1. Сервер недоступен</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Откройте диспетчер задач Windows (<b>Ctrl+Shift+Esc</b>; если открылся «Диспетчер задач клуба», нажмите Ctrl+Alt+Del), найдите <b>ClubShell.Server</b> → <b>Снять задачу</b>.</li><li>В оболочке (на заставке) нажмите Пробел и попробуйте войти demo/demo. В админке подождите 3–5 секунд.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Оболочка: «Нет связи с сервером» (не вылет). Админка: «Нет связи с сервером» с кнопкой «Изменить подключение».</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r7.1" value="+"> Работает</label>
+<label><input type="radio" name="r7.1" value="-"> Не работает</label>
+<label><input type="radio" name="r7.1" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+<div class="step" data-id="7.2" data-title="Перезапуск">
+<h3>7.2. Перезапуск</h3>
+<div class="cols"><div><div class="lbl act">Что сделать</div><ol><li>Закройте всё: <b>STOP_ALL.cmd</b>. Затем снова <b>START_TEST.cmd</b>.</li></ol></div>
+<div><div class="lbl exp">Что должно получиться</div><ul><li>Всё поднимается заново (данные теста начинаются с нуля, demo снова 600 ₽).</li></ul></div></div>
+<div class="res"><label><input type="radio" name="r7.2" value="+"> Работает</label>
+<label><input type="radio" name="r7.2" value="-"> Не работает</label>
+<label><input type="radio" name="r7.2" value="?"> Странно / не понял</label>
+<input class="note" type="text" placeholder="Что именно произошло (если не «Работает»)"></div></div>
+</section>
+<div class="box"><h2>Что НЕ проверяем в этом тесте</h2>
+Службу-стража, блокировку клавиш Windows, замену рабочего стола Windows, очистку профиля гостя и перезагрузку в конце сеанса: это в боевой установке, отдельный этап.</div>
+<div class="box"><h2>Отчёт</h2><button id="mk">Собрать отчёт</button> <button id="cp">Скопировать</button>
+<p>Пришлите текст, скриншоты всего, что «не работает», и файлы <code>server.log</code>, <code>server.err.log</code> из папки <code>work</code>.</p>
+<textarea id="out" readonly placeholder="Здесь появится отчёт"></textarea></div>
+</div>
+<div class="bar"><span id="stat">Отмечено: 0 из 28</span></div>
+<script>
+const steps=[...document.querySelectorAll('.step')]; const KEY='clubshell-tester-v1';
+let st={}; try{st=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+function paint(s){const r=st[s.dataset.id]||{};s.classList.remove('ok','bad','q');
+ if(r.v==='+')s.classList.add('ok'); if(r.v==='-')s.classList.add('bad'); if(r.v==='?')s.classList.add('q');}
+function count(){document.getElementById('stat').textContent='Отмечено: '+Object.values(st).filter(x=>x.v).length+' из 28';}
+steps.forEach(s=>{const id=s.dataset.id; const r=st[id]||(st[id]={});
+ s.querySelectorAll('input[type=radio]').forEach(i=>{if(r.v===i.value)i.checked=true; i.onchange=()=>{r.v=i.value;save();paint(s);count();};});
+ const n=s.querySelector('.note'); n.value=r.n||''; n.oninput=()=>{r.n=n.value;save();}; paint(s);});
+['who','win','scr'].forEach(k=>{const e=document.getElementById(k); e.value=st['_'+k]||''; e.oninput=()=>{st['_'+k]=e.value;save();};});
+count();
+document.getElementById('mk').onclick=()=>{
+ const L=['ОТЧЁТ О ПРОВЕРКЕ — Мираж PRO','Тестер: '+(document.getElementById('who').value||'-'),'Windows: '+(document.getElementById('win').value||'-'),'Экран: '+(document.getElementById('scr').value||'-'),''];
+ let ok=0,bad=0,q=0,no=0;
+ steps.forEach(s=>{const r=st[s.dataset.id]||{}; const m={'+':'РАБОТАЕТ','-':'НЕ РАБОТАЕТ','?':'СТРАННО'}[r.v]||'не проверено';
+  if(r.v==='+')ok++;else if(r.v==='-')bad++;else if(r.v==='?')q++;else no++;
+  L.push(s.dataset.id+' '+s.dataset.title+': '+m+(r.n?' — '+r.n:''));});
+ L.push('','Итого: работает '+ok+', не работает '+bad+', странно '+q+', не проверено '+no);
+ document.getElementById('out').value=L.join('\n');};
+document.getElementById('cp').onclick=async()=>{const o=document.getElementById('out'); if(!o.value)document.getElementById('mk').click(); o.select();
+ try{await navigator.clipboard.writeText(o.value);}catch(e){document.execCommand('copy');}};
+</script></body></html>
