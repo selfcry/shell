@@ -7,6 +7,7 @@ public record SessionInfo(long Id, long GuestId, string Guest, long PcId, string
 
 // запросы клиентов ПК
 public record LoginReq(string Username, string Password);
+public record RegisterReq(string Username, string Password, string? Birth);
 public record StartReq(string Username, string PackageId);
 public record StopReq(string Username);
 public record HeartbeatReq(string? Username);

@@ -31,6 +31,16 @@ public sealed class FakeClubApi : IClubApi
         return Task.FromResult(new LoginResult(true, null, username, u.Balance, Packages));
     }
 
+    public Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth)
+    {
+        ThrowIfOffline();
+        username = username.Trim();
+        if (username.Length < 3 || password.Length < 6) return Task.FromResult(new LoginResult(false, "Логин от 3, пароль от 6 символов"));
+        if (_users.ContainsKey(username)) return Task.FromResult(new LoginResult(false, "Этот логин уже занят"));
+        _users[username] = (password, 0);
+        return Task.FromResult(new LoginResult(true, null, username, 0, Packages));
+    }
+
     public Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)
     {
         ThrowIfOffline();

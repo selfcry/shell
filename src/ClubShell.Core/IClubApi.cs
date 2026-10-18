@@ -7,6 +7,8 @@ namespace ClubShell.Core;
 public interface IClubApi
 {
     Task<LoginResult> LoginAsync(string pcId, string username, string password);
+    /// <summary>Самостоятельная регистрация гостя на клубном ПК. Ответ такой же, как у входа.</summary>
+    Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth);
     Task<StartResult> StartSessionAsync(string pcId, string username, string packageId);
     Task StopSessionAsync(string pcId, string username);
 

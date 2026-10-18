@@ -343,3 +343,9 @@ body.tm-page .backdrop { display: none; }
 .tm-end { padding: 6px 0; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); font: 700 12px Inter, sans-serif; cursor: pointer; }
 .tm-end:hover { border-color: var(--danger); color: var(--danger); }
 .tm-end.armed { background: var(--danger); border-color: var(--danger); color: #000; }
+
+/* Регистрация */
+.card input[type="date"] { color-scheme: dark; }
+.card label.agree { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.card label.agree input { width: 18px; height: 18px; margin: 1px 0 0; flex: none; accent-color: var(--orange); }
+.card [hidden] { display: none !important; }

@@ -18,7 +18,11 @@ const IDLE_MS = 60_000; // вернуться на заставку, если г
 
 const backdrop = el("div", { class: "backdrop" });
 const intro = buildIntro(() => show("login"), (pin) => send({ type: "adminExit", pin }));
-const login = buildLogin((u, p) => send({ type: "login", username: u, password: p }), () => show("intro"));
+const login = buildLogin({
+  onLogin: (u, p) => send({ type: "login", username: u, password: p }),
+  onRegister: (u, p, birth) => send({ type: "register", username: u, password: p, birth }),
+  onBack: () => show("intro"),
+});
 const tariffs = buildTariffs((id) => send({ type: "startSession", packageId: id }), () => show("intro"));
 const desktop = buildDesktop({
   onLaunch: (id) => send({ type: "launch", id }),

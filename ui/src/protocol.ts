@@ -55,6 +55,7 @@ export type ToHost =
   | { type: "speedTest" } // измерить скорость интернета
   | { type: "showDesktop" } // свернуть всё и показать рабочий стол клуба
   | { type: "login"; username: string; password: string }
+  | { type: "register"; username: string; password: string; birth: string } // birth: yyyy-MM-dd
   | { type: "startSession"; packageId: string }
   | { type: "stopSession" }
   | { type: "launch"; id: string }

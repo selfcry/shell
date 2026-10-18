@@ -121,6 +121,16 @@ export class MockHost {
         this.emit({ type: "loginResult", ok: true, user: msg.username, balance: u.balance, packages: PACKAGES });
         break;
       }
+      case "register": {
+        if (USERS[msg.username]) {
+          this.emit({ type: "loginResult", ok: false, error: "Этот логин уже занят" });
+          break;
+        }
+        USERS[msg.username] = { password: msg.password, balance: 0 };
+        this.balance = 0;
+        this.emit({ type: "loginResult", ok: true, user: msg.username, balance: 0, packages: PACKAGES });
+        break;
+      }
       case "startSession": {
         const p = PACKAGES.find((x) => x.id === msg.packageId);
         if (!p) return this.emit({ type: "startResult", ok: false, error: "Тариф не найден" });

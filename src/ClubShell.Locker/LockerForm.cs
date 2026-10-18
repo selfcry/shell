@@ -288,6 +288,10 @@ internal sealed class LockerForm : Form
                     await HandleLoginAsync(Str(root, "username"), Str(root, "password"));
                     break;
 
+                case "register":
+                    await HandleRegisterAsync(Str(root, "username"), Str(root, "password"), Str(root, "birth"));
+                    break;
+
                 case "startSession":
                     await HandleStartAsync(Str(root, "packageId"));
                     break;
@@ -329,6 +333,25 @@ internal sealed class LockerForm : Form
         try
         {
             var r = await _api.LoginAsync(_pcName, user, password);
+            if (r.Ok) _session.SetUser(r.User!, r.Balance);
+            Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Post(new { type = "loginResult", ok = false, error = "Нет связи с сервером" });
+        }
+    }
+
+    private async Task HandleRegisterAsync(string user, string password, string birth)
+    {
+        if (!_linkOnline)
+        {
+            Post(new { type = "loginResult", ok = false, error = _linkReason ?? "Нет связи с сервером" });
+            return;
+        }
+        try
+        {
+            var r = await _api.RegisterAsync(_pcName, user, password, birth);
             if (r.Ok) _session.SetUser(r.User!, r.Balance);
             Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages });
         }

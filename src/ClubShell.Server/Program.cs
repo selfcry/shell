@@ -73,6 +73,16 @@ pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
         : Results.Ok(new { ok = false, error });
 });
 
+pc.MapPost("/register", (HttpContext ctx, RegisterReq req) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    club.Touch(p.Id);
+    var (ok, error, guest, tariffs) = club.Register(p, req.Username, req.Password, req.Birth);
+    return ok
+        ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, packages = tariffs!.Select(Pkg) })
+        : Results.Ok(new { ok = false, error });
+});
+
 pc.MapPost("/session/start", (HttpContext ctx, StartReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");

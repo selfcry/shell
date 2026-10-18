@@ -8,6 +8,7 @@ public sealed class SwitchableClubApi : IClubApi
     public IClubApi Inner { get => _inner; set => _inner = value; }
 
     public Task<LoginResult> LoginAsync(string pcId, string u, string p) => _inner.LoginAsync(pcId, u, p);
+    public Task<LoginResult> RegisterAsync(string pcId, string u, string p, string birth) => _inner.RegisterAsync(pcId, u, p, birth);
     public Task<StartResult> StartSessionAsync(string pcId, string u, string pkg) => _inner.StartSessionAsync(pcId, u, pkg);
     public Task StopSessionAsync(string pcId, string u) => _inner.StopSessionAsync(pcId, u);
     public Task HeartbeatAsync(string pcId, string? u) => _inner.HeartbeatAsync(pcId, u);

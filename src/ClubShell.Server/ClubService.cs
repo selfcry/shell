@@ -321,6 +321,52 @@ public sealed class ClubService
         return s is null ? null : EndSession(s.PcId, reason);
     }
 
+    // ---------- самостоятельная регистрация гостя ----------
+
+    private static readonly System.Text.RegularExpressions.Regex LoginRx = new(@"^[A-Za-z0-9_.\-А-Яа-яЁё]{3,24}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private readonly ConcurrentDictionary<long, Queue<long>> _regByPc = new();
+    private readonly Queue<long> _regAll = new();
+
+    /// <summary>Лимиты против массовых регистраций: не больше 10 в час с одного ПК и 120 в час по всему клубу.</summary>
+    private bool RegistrationAllowed(long pcId)
+    {
+        var now = Db.Now();
+        lock (_regAll)
+        {
+            while (_regAll.Count > 0 && now - _regAll.Peek() > 3600) _regAll.Dequeue();
+            var q = _regByPc.GetOrAdd(pcId, _ => new Queue<long>());
+            while (q.Count > 0 && now - q.Peek() > 3600) q.Dequeue();
+            if (q.Count >= 10 || _regAll.Count >= 120) return false;
+            q.Enqueue(now);
+            _regAll.Enqueue(now);
+            return true;
+        }
+    }
+
+    /// <summary>Регистрация гостя с клубного ПК. Возвращает то же, что и вход, чтобы гость сразу попал к выбору тарифа.</summary>
+    public (bool ok, string? error, Guest? guest, List<Tariff>? tariffs) Register(Pc pc, string login, string password, string? birth)
+    {
+        login = (login ?? "").Trim();
+        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", null, null);
+        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", null, null);
+        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", null, null);
+        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", null, null);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz).DateTime);
+        var age = today.Year - born.Year - (today < born.AddYears(today.Year - born.Year) ? 1 : 0);
+        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", null, null);
+        if (!RegistrationAllowed(pc.Id)) return (false, "Слишком много регистраций, обратитесь к администратору", null, null);
+
+        Result created;
+        _hashSlots.Wait();
+        try { created = CreateGuest(login, password, 0, born.ToString("yyyy-MM-dd")); }
+        finally { _hashSlots.Release(); }
+        if (!created.Ok) return (false, created.Error!.Contains("уже есть") ? "Этот логин уже занят" : created.Error, null, null);
+
+        using var c = _db.Open();
+        var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", login));
+        return (true, null, g, Tariffs(pc.Zone));
+    }
+
     public SessionInfo? ActiveSessionOfPc(long pcId) => _active.GetValueOrDefault(pcId);
 
     /// <summary>Сеансы, у которых вышло время. Смотрит только в память: вызывается каждые 2 с.</summary>
