@@ -54,6 +54,7 @@ foreach ($p in $parts) {
     $target = Join-Path $Dir $p.Folder
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     Expand-Archive -Path $zip -DestinationPath $target -Force
+    Get-ChildItem $target -Recurse -File | Unblock-File -ErrorAction SilentlyContinue   # убрать метку «скачано из интернета»
 }
 
 # ---------- 2. сервер ----------
