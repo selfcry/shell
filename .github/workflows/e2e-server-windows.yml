@@ -1,0 +1,39 @@
+name: "Проверка: сервер и скрипт test-all.ps1 на Windows"
+
+# Собирает сервер под Windows и гоняет скрипт проверки (тот же, что запускается на виртуалке) в режиме -ServerOnly:
+# так заодно проверяется, что скрипт вообще разбирается PowerShell и автопроверки API проходят на настоящей Windows.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ClubShell.Server/**'
+      - 'scripts/test-all.ps1'
+      - '.github/workflows/e2e-server-windows.yml'
+  pull_request:
+    paths:
+      - 'src/ClubShell.Server/**'
+      - 'scripts/test-all.ps1'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Сборка сервера (win-x64)
+        run: dotnet publish src/ClubShell.Server -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out
+      - name: Упаковка
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory zips | Out-Null
+          Compress-Archive -Path out/* -DestinationPath zips/ClubShell.Server-win-x64.zip
+      - name: Скрипт проверки (только сервер)
+        shell: powershell
+        run: ./scripts/test-all.ps1 -LocalZips "$PWD\zips" -ServerOnly -Dir "$PWD\e2e"
+      - name: Лог сервера
+        if: always()
+        shell: pwsh
+        run: Get-Content e2e/server.log, e2e/server.err.log -ErrorAction SilentlyContinue

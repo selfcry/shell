@@ -3,6 +3,7 @@ name: "Сборка: служба-страж (Service)"
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
       - 'src/ClubShell.Service/**'
       - 'src/ClubShell.Core/**'
@@ -19,16 +20,49 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
       - name: Публикация ClubShell.Service
         run: dotnet publish src/ClubShell.Service -c Release -r win-x64 --self-contained true  -o out
-
+      - name: Упаковка в zip
+        shell: pwsh
+        run: Compress-Archive -Path out/* -DestinationPath "ClubShell.Service-win-x64.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: ClubShell.Service-win-x64
-          path: out
+          path: ClubShell.Service-win-x64.zip
           if-no-files-found: error
           retention-days: 30
+
+  # Выкладываем в GitHub Releases только после успешной сборки и только для main и тегов v*.
+  # main обновляет «скользящий» релиз latest, тег v1.2.3 создаёт отдельный релиз с этим именем.
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ClubShell.Service-*
+          path: dist
+          merge-multiple: true
+      - name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"; PRE=""
+          else
+            TAG="latest"; PRE="--prerelease"
+            git config user.name "github-actions"; git config user.email "github-actions@users.noreply.github.com"
+            git tag -f latest "$GITHUB_SHA"
+            git push -f origin refs/tags/latest
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" $PRE --title "$TAG" --notes "Автоматическая сборка из коммита ${GITHUB_SHA::7}. В архивах готовые программы: распакуйте и запустите." || sleep 5
+          fi
+          gh release upload "$TAG" dist/*.zip --clobber

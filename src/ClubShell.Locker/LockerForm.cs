@@ -37,6 +37,7 @@ internal sealed class LockerForm : Form
     private readonly System.Windows.Forms.Timer _status = new() { Interval = 2000 };
     private TaskbarForm? _taskbar;
     private TaskManagerForm? _taskMgr;
+    private ServerCommandLink? _commandLink; // только в тестовом режиме с настоящим сервером
     private Dictionary<string, ResolvedEntry> _catalog = new();
 
     private string? _serverUrl;
@@ -60,6 +61,15 @@ internal sealed class LockerForm : Form
         Controls.Add(_web);
 
         _requireService = !_test;
+        // Тест «всё вместе» без службы: оболочка сама ходит на сервер (CLUBSHELL_SERVER_URL + CLUBSHELL_PC_TOKEN) и слушает его команды.
+        if (_test && Environment.GetEnvironmentVariable("CLUBSHELL_SERVER_URL") is { Length: > 0 } testUrl
+                  && Environment.GetEnvironmentVariable("CLUBSHELL_PC_TOKEN") is { Length: > 0 } testToken)
+        {
+            _serverUrl = testUrl;
+            _api.Inner = new HttpClubApi(testUrl, testToken);
+            _commandLink = new ServerCommandLink(testUrl, testToken, m => RunOnUi(() => OnServerCommand(m)));
+            _commandLink.Start();
+        }
         _session = new SessionManager(_api, _pcName);
         _session.Tick += (left, balance) => Post(new { type = "tick", remainingSec = left, balance });
         _session.Ended += reason => RunOnUi(() => EndSession(reason));
@@ -492,7 +502,7 @@ internal sealed class LockerForm : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { SystemTaskbar.Restore(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _taskbar?.Dispose(); }
+        if (disposing) { SystemTaskbar.Restore(); _commandLink?.Dispose(); _taskMgr?.Dispose(); _hook.Dispose(); _session.Dispose(); _service.Dispose(); _guard.Dispose(); _status.Dispose(); _taskbar?.Dispose(); }
         base.Dispose(disposing);
     }
 }

@@ -1,4 +1,4 @@
-# Сборка всего в папку dist\ (запускать на Windows из корня проекта).
+﻿# Сборка всего в папку dist\ (запускать на Windows из корня проекта).
 #   .\scripts\build.ps1
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
