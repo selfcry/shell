@@ -1,0 +1,25 @@
+# Установка: sudo cp clubshell-server.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now clubshell-server
+[Unit]
+Description=ClubShell club server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=clubshell
+WorkingDirectory=/opt/clubshell-server
+ExecStart=/opt/clubshell-server/ClubShell.Server
+Restart=always
+RestartSec=2
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5080
+Environment=Club__DataDir=/var/lib/clubshell
+Environment=Club__TimeZone=Europe/Moscow
+Environment=Club__SeedDemo=false
+# Сервер слушает только localhost, наружу его выставляет Caddy с HTTPS.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/clubshell
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

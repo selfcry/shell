@@ -1,0 +1,42 @@
+name: Сборка: окно блокировки и рабочий стол (Locker)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ClubShell.Locker/**'
+      - 'src/ClubShell.Core/**'
+      - 'ui/**'
+      - 'tools/run-test.cmd'
+      - '.github/workflows/build-locker.yml'
+      - '.github/actions/**'
+  pull_request:
+    paths:
+      - 'src/ClubShell.Locker/**'
+      - 'src/ClubShell.Core/**'
+      - 'ui/**'
+      - 'tools/run-test.cmd'
+      - '.github/workflows/build-locker.yml'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-ui
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Публикация ClubShell.Locker
+        run: dotnet publish src/ClubShell.Locker -c Release -r win-x64 --self-contained true  -o out
+      - name: Скрипт тестового запуска
+        shell: bash
+        run: cp tools/run-test.cmd out/run-test.cmd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClubShell.Locker-win-x64
+          path: out
+          if-no-files-found: error
+          retention-days: 30

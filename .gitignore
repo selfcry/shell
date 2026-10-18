@@ -1,0 +1,21 @@
+# сборка
+bin/
+obj/
+dist/
+dist-*/
+publish/
+out/
+*.zip
+node_modules/
+# данные и секреты
+data/
+admin-key.txt
+admin-pin.txt
+config.json
+*.db
+*.db-wal
+*.db-shm
+.env
+# система
+.DS_Store
+.claude/

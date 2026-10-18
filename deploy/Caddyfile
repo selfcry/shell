@@ -1,0 +1,5 @@
+# HTTPS для сервера клуба: Caddy сам получает сертификат Let's Encrypt. Замените club.example.ru на ваш домен.
+club.example.ru {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:5080
+}

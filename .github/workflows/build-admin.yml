@@ -1,0 +1,36 @@
+name: Сборка: админ-панель (Admin)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ClubShell.Admin/**'
+      - 'ui/**'
+      - '.github/workflows/build-admin.yml'
+      - '.github/actions/**'
+  pull_request:
+    paths:
+      - 'src/ClubShell.Admin/**'
+      - 'ui/**'
+      - '.github/workflows/build-admin.yml'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-ui
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Публикация ClubShell.Admin
+        run: dotnet publish src/ClubShell.Admin -c Release -r win-x64 --self-contained true  -o out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClubShell.Admin-win-x64
+          path: out
+          if-no-files-found: error
+          retention-days: 30
