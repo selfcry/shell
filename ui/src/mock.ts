@@ -26,7 +26,15 @@ export class MockHost {
     { id: "3", title: "Google Chrome — Мираж PRO", exe: "chrome.exe", active: false, minimized: true },
   ];
 
-  constructor(private emit: (m: FromHost) => void, private role: "shell" | "taskbar" | "taskmgr" | "admin" | "explorer" = "shell") {}
+  constructor(private emit: (m: FromHost) => void, private role: "shell" | "taskbar" | "taskmgr" | "admin" | "explorer" | "switcher" = "shell") {
+    if (role === "switcher") {
+      window.setTimeout(() => {
+        this.emit({ type: "switcher", selected: 0, items: this.windows.map((w) => ({ id: w.id, title: w.title, exe: w.exe })) });
+        let i = 0;
+        window.setInterval(() => this.emit({ type: "select", selected: ++i % this.windows.length }), 1500);
+      }, 100);
+    }
+  }
 
   private procs = [
     { pid: 4120, name: "cs2.exe", title: "Counter-Strike 2", cpu: 31, memMb: 4210, app: true },
@@ -107,6 +115,7 @@ export class MockHost {
     if (this.role === "taskmgr") return this.handleTaskMgr(msg);
     if (this.role === "admin") return handleAdmin(msg, this.emit);
     if (this.role === "explorer") return handleExplorer(msg, this.emit);
+    if (this.role === "switcher") return;
     switch (msg.type) {
       case "ready":
         this.emit({ type: "config", pcName: "PC-01", zone: "ARENA" });

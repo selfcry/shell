@@ -19,5 +19,12 @@ export default defineConfig({
       },
     },
   },
-  server: { port: 5173 },
+  // В разработке админка с ?live ходит к настоящему серверу через прокси (тот же адрес для страницы и API).
+  server: {
+    port: 5173,
+    proxy: {
+      "/api/admin": { target: "https://cryvx.ru", changeOrigin: true },
+      "/covers": { target: "https://cryvx.ru", changeOrigin: true },
+    },
+  },
 });

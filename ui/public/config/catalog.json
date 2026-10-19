@@ -1,34 +1,187 @@
 {
   "_comment": "Игры с clubAccount запускаются через RentalGames (-idgame = код игры из их списка): аккаунт выдаёт он, в args подставляются {user} и {pc}. Каталог игр и приложений. Хост читает этот же файл и сам запускает по id; интерфейс получает только отображаемые поля. Показываются только записи, у которых найден хотя бы один путь на этом ПК (URI-схемы steam:// и т.п. считаются доступными).",
   "items": [
-    { "id": "cs2", "title": "Counter-Strike 2", "kind": "game", "group": "Шутеры", "clubAccount": true,
-      "launch": { "paths": ["find:RentalGames.exe"], "args": "-idgame 730 -autostart -user {user}" } },
-    { "id": "valorant", "title": "VALORANT", "kind": "game", "group": "Шутеры", "minAge": 16,
-      "launch": { "paths": ["C:\\Riot Games\\Riot Client\\RiotClientServices.exe"], "args": "--launch-product=valorant --launch-patchline=live" } },
-    { "id": "pubg", "title": "PUBG: BATTLEGROUNDS", "kind": "game", "group": "Шутеры", "clubAccount": true,
-      "launch": { "paths": ["find:RentalGames.exe"], "args": "-idgame 578080 -autostart -user {user}" } },
-    { "id": "dota2", "title": "Dota 2", "kind": "game", "group": "MOBA",
-      "launch": { "paths": ["steam://rungameid/570"] } },
-    { "id": "lol", "title": "League of Legends", "kind": "game", "group": "MOBA",
-      "launch": { "paths": ["C:\\Riot Games\\Riot Client\\RiotClientServices.exe"], "args": "--launch-product=league_of_legends --launch-patchline=live" } },
-    { "id": "gta5", "title": "Grand Theft Auto V", "kind": "game", "group": "Экшен", "minAge": 18, "clubAccount": true,
-      "launch": { "paths": ["find:RentalGames.exe"], "args": "-idgame 271590 -autostart -user {user}" } },
-    { "id": "fortnite", "title": "Fortnite", "kind": "game", "group": "Шутеры",
-      "launch": { "paths": ["com.epicgames.launcher://apps/fn%3A4fe75bbc5a674f4f9b356b5c90567da5%3AFortnite?action=launch&silent=true"] } },
-    { "id": "minecraft", "title": "Minecraft", "kind": "game", "group": "Экшен",
-      "launch": { "paths": ["shell:AppsFolder/Microsoft.4297127D64EC6_8wekyb3d8bbwe!Minecraft"] } },
-    { "id": "stalker", "title": "S.T.A.L.K.E.R.: Shadow of Chornobyl", "kind": "game", "group": "Экшен", "minAge": 18,
-      "launch": { "paths": ["steam://rungameid/4500"] } },
-
-    { "id": "steam", "title": "Steam", "kind": "app", "group": "Лаунчеры",
-      "launch": { "paths": ["C:\\Program Files (x86)\\Steam\\Steam.exe", "D:\\Steam\\Steam.exe"] } },
-    { "id": "epic", "title": "Epic Games", "kind": "app", "group": "Лаунчеры",
-      "launch": { "paths": ["C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win32\\EpicGamesLauncher.exe"] } },
-    { "id": "battlenet", "title": "Battle.net", "kind": "app", "group": "Лаунчеры",
-      "launch": { "paths": ["C:\\Program Files (x86)\\Battle.net\\Battle.net Launcher.exe"] } },
-    { "id": "discord", "title": "Discord", "kind": "app", "group": "Общение",
-      "launch": { "paths": ["%LOCALAPPDATA%\\Discord\\Update.exe"], "args": "--processStart Discord.exe" } },
-    { "id": "chrome", "title": "Google Chrome", "kind": "app", "group": "Браузер",
-      "launch": { "paths": ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"], "args": "--incognito" } }
+    {
+      "id": "cs2",
+      "title": "Counter-Strike 2",
+      "kind": "game",
+      "group": "Шутеры",
+      "clubAccount": true,
+      "launch": {
+        "paths": [
+          "find:RentalGames.exe"
+        ],
+        "args": "-idgame 730 -autostart -user {user}"
+      },
+      "cover": "./media/covers/cs2.jpg"
+    },
+    {
+      "id": "valorant",
+      "title": "VALORANT",
+      "kind": "game",
+      "group": "Шутеры",
+      "minAge": 16,
+      "launch": {
+        "paths": [
+          "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+        ],
+        "args": "--launch-product=valorant --launch-patchline=live"
+      },
+      "cover": "./media/covers/valorant.jpg"
+    },
+    {
+      "id": "pubg",
+      "title": "PUBG: BATTLEGROUNDS",
+      "kind": "game",
+      "group": "Шутеры",
+      "clubAccount": true,
+      "launch": {
+        "paths": [
+          "find:RentalGames.exe"
+        ],
+        "args": "-idgame 578080 -autostart -user {user}"
+      },
+      "cover": "./media/covers/pubg.jpg"
+    },
+    {
+      "id": "dota2",
+      "title": "Dota 2",
+      "kind": "game",
+      "group": "MOBA",
+      "launch": {
+        "paths": [
+          "steam://rungameid/570"
+        ]
+      },
+      "cover": "./media/covers/dota2.jpg"
+    },
+    {
+      "id": "lol",
+      "title": "League of Legends",
+      "kind": "game",
+      "group": "MOBA",
+      "launch": {
+        "paths": [
+          "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+        ],
+        "args": "--launch-product=league_of_legends --launch-patchline=live"
+      },
+      "cover": "./media/covers/lol.jpg"
+    },
+    {
+      "id": "gta5",
+      "title": "Grand Theft Auto V",
+      "kind": "game",
+      "group": "Экшен",
+      "minAge": 18,
+      "clubAccount": true,
+      "launch": {
+        "paths": [
+          "find:RentalGames.exe"
+        ],
+        "args": "-idgame 271590 -autostart -user {user}"
+      },
+      "cover": "./media/covers/gta5.jpg"
+    },
+    {
+      "id": "fortnite",
+      "title": "Fortnite",
+      "kind": "game",
+      "group": "Шутеры",
+      "launch": {
+        "paths": [
+          "com.epicgames.launcher://apps/fn%3A4fe75bbc5a674f4f9b356b5c90567da5%3AFortnite?action=launch&silent=true"
+        ]
+      },
+      "cover": "./media/covers/fortnite.jpg"
+    },
+    {
+      "id": "minecraft",
+      "title": "Minecraft",
+      "kind": "game",
+      "group": "Экшен",
+      "launch": {
+        "paths": [
+          "shell:AppsFolder/Microsoft.4297127D64EC6_8wekyb3d8bbwe!Minecraft"
+        ]
+      },
+      "cover": "./media/covers/minecraft.jpg"
+    },
+    {
+      "id": "stalker",
+      "title": "S.T.A.L.K.E.R.: Shadow of Chornobyl",
+      "kind": "game",
+      "group": "Экшен",
+      "minAge": 18,
+      "launch": {
+        "paths": [
+          "steam://rungameid/4500"
+        ]
+      },
+      "cover": "./media/covers/stalker.jpg"
+    },
+    {
+      "id": "steam",
+      "title": "Steam",
+      "kind": "app",
+      "group": "Лаунчеры",
+      "launch": {
+        "paths": [
+          "C:\\Program Files (x86)\\Steam\\Steam.exe",
+          "D:\\Steam\\Steam.exe"
+        ]
+      },
+      "cover": "./media/covers/steam.jpg"
+    },
+    {
+      "id": "epic",
+      "title": "Epic Games",
+      "kind": "app",
+      "group": "Лаунчеры",
+      "launch": {
+        "paths": [
+          "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win32\\EpicGamesLauncher.exe"
+        ]
+      },
+      "cover": "./media/covers/epic.jpg"
+    },
+    {
+      "id": "battlenet",
+      "title": "Battle.net",
+      "kind": "app",
+      "group": "Лаунчеры",
+      "launch": {
+        "paths": [
+          "C:\\Program Files (x86)\\Battle.net\\Battle.net Launcher.exe"
+        ]
+      },
+      "cover": "./media/covers/battlenet.jpg"
+    },
+    {
+      "id": "discord",
+      "title": "Discord",
+      "kind": "app",
+      "group": "Общение",
+      "launch": {
+        "paths": [
+          "%LOCALAPPDATA%\\Discord\\Update.exe"
+        ],
+        "args": "--processStart Discord.exe"
+      },
+      "cover": "./media/covers/discord.jpg"
+    },
+    {
+      "id": "chrome",
+      "title": "Google Chrome",
+      "kind": "app",
+      "group": "Браузер",
+      "launch": {
+        "paths": [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+        ],
+        "args": "--incognito"
+      },
+      "cover": "./media/covers/chrome.jpg"
+    }
   ]
 }
