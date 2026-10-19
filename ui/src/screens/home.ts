@@ -1,6 +1,6 @@
 import { el, formatTime, isNight } from "../dom";
 import { icons } from "../icons";
-import type { CatalogItem, TariffPackage } from "../protocol";
+import type { LoyaltyInfo, CatalogItem, TariffPackage } from "../protocol";
 
 // Главный экран гостя. Показывается сразу после входа: игры и приложения, профиль, баланс и время сеанса.
 // Время покупается здесь же (окно «Тарифы»), а не отдельным экраном перед играми.
@@ -11,6 +11,8 @@ export interface HomeHandlers {
   onEndSession(): void;
   onLogout(): void;
   onOpenExplorer(): void;
+  onCallAdmin(): void;
+  onPromo(code: string): void;
 }
 
 export interface HomeScreen {
@@ -19,6 +21,9 @@ export interface HomeScreen {
   /** Гость вошёл (сеанса ещё нет): имя, баланс и тарифы. */
   setLogin(user: string, balance: number, packages: TariffPackage[]): void;
   setBalance(balance: number): void;
+  setBonus(bonus: number, loyalty?: LoyaltyInfo | null): void;
+  promoResult(ok: boolean, error?: string): void;
+  callResult(ok: boolean, text?: string): void;
   setSession(active: boolean): void;
   tick(remainingSec: number, balance: number): void;
   setCatalog(items: CatalogItem[]): void;
@@ -107,6 +112,15 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   const userName = el("div", { class: "hm-user-name", text: "Гость" });
   const pcInfo = el("div", { class: "hm-user-sub", text: "" });
   const balanceVal = el("div", { class: "hm-big", text: "0 ₽" });
+  const bonusVal = el("div", { class: "hm-bonus", text: "" });
+  const levelVal = el("div", { class: "hm-hint", text: "" });
+  const promoInput = el("input", { class: "hm-promo-input", attrs: { type: "text", placeholder: "Промокод", maxlength: "24", autocomplete: "off", spellcheck: "false" } });
+  const promoBtn = el("button", { class: "hm-promo-btn", text: "OK" });
+  const sendPromo = () => { const c = promoInput.value.trim(); if (c) { promoBtn.disabled = true; h.onPromo(c); } };
+  promoBtn.addEventListener("click", sendPromo);
+  promoInput.addEventListener("keydown", (e) => (e as KeyboardEvent).key === "Enter" && sendPromo());
+  const callBtn = el("button", { class: "hm-wide hm-call", text: "🔔 Позвать администратора" });
+  callBtn.addEventListener("click", () => { callBtn.disabled = true; h.onCallAdmin(); window.setTimeout(() => (callBtn.disabled = false), 5000); });
   const sessState = el("div", { class: "hm-sess-state" });
   const timeVal = el("div", { class: "hm-time brand-gradient", text: "--:--" });
   const bar = el("div", { class: "hm-bar-fill" });
@@ -116,9 +130,14 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   const recentCard = el("section", { class: "hm-card" }, [el("div", { class: "hm-card-title", text: "Недавно запускали" }), recentList]);
   const side = el("aside", { class: "hm-side" }, [
     el("section", { class: "hm-card hm-profile" }, [avatar, el("div", {}, [userName, pcInfo])]),
-    el("section", { class: "hm-card" }, [el("div", { class: "hm-card-title", text: "Баланс" }), balanceVal, el("div", { class: "hm-hint", text: "Пополнить баланс можно на стойке администратора" })]),
+    el("section", { class: "hm-card" }, [
+      el("div", { class: "hm-card-title", text: "Баланс" }), balanceVal, bonusVal, levelVal,
+      el("div", { class: "hm-promo" }, [promoInput, promoBtn]),
+      el("div", { class: "hm-hint", text: "Пополнить баланс можно на стойке администратора. Бонусы тратятся на время первыми." }),
+    ]),
     sessCard,
     recentCard,
+    callBtn,
   ]);
 
   // ---------- окна ----------
@@ -330,6 +349,21 @@ export function buildHome(h: HomeHandlers): HomeScreen {
       renderTabs();
       renderRecent();
     },
+    setBonus(b, loyalty) {
+      bonusVal.textContent = b > 0 ? `+ ${b} бонусов` : "";
+      if (loyalty !== undefined)
+        levelVal.textContent = loyalty?.level
+          ? `Уровень «${loyalty.level}»${loyalty.cashbackPct ? `, кешбэк ${loyalty.cashbackPct}%` : ""}${loyalty.nextLevel ? ` · до «${loyalty.nextLevel}» ${loyalty.toNext} ₽` : ""}`
+          : "";
+    },
+    promoResult(ok, error) {
+      promoBtn.disabled = false;
+      if (ok) promoInput.value = "";
+      toast(ok ? "Промокод принят: бонусы начислены" : error ?? "Промокод не принят", ok ? "ok" : "error");
+    },
+    callResult(ok, text) {
+      toast(text ?? (ok ? "Администратор вызван" : "Не удалось вызвать администратора"), ok ? "ok" : "error");
+    },
     setBalance(b) {
       balance = b;
       balanceVal.textContent = `${b} ₽`;
@@ -368,6 +402,8 @@ export function buildHome(h: HomeHandlers): HomeScreen {
       if (modal.hidden) toast(text, "error");
     },
     reset() {
+      bonusVal.textContent = levelVal.textContent = "";
+      promoInput.value = "";
       user = "";
       balance = 0;
       packages = [];

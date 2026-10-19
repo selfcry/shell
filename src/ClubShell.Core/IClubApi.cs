@@ -20,4 +20,10 @@ public interface IClubApi
     /// Ответ — есть ли на этом ПК оплаченный сеанс по данным сервера; null — сервер этого не сообщает (заглушки).
     /// </summary>
     Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username);
+
+    /// <summary>Гость нажал «Позвать администратора».</summary>
+    Task<bool> CallAdminAsync(string? username) => Task.FromResult(false);
+
+    /// <summary>Ввести промокод (бонусы начисляет сервер, один раз на гостя).</summary>
+    Task<PromoResult> RedeemPromoAsync(string username, string code) => Task.FromResult(new PromoResult(false, "Промокоды недоступны"));
 }

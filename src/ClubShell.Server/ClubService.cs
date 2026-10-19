@@ -6,7 +6,7 @@ namespace ClubShell.Server;
 public sealed record Result(bool Ok, string? Error = null);
 
 /// <summary>Вся бизнес-логика клуба: гости, баланс, тарифы, ПК, сессии. Сервер — единственный источник правды о времени и деньгах.</summary>
-public sealed class ClubService
+public sealed partial class ClubService
 {
     private readonly Db _db;
     private readonly TimeZoneInfo _tz;
@@ -192,6 +192,22 @@ public sealed class ClubService
         return new Result(true);
     }
 
+    /// <summary>Бонусы и телефоны гостей одним запросом (для списка в админке).</summary>
+    public Dictionary<long, (int bonus, string? phone)> GuestExtras()
+    {
+        using var c = _db.Open();
+        return Db.Query(c, "SELECT id, bonus, phone FROM guests", r => (id: r.GetInt64(0), bonus: r.GetInt32(1), phone: r.IsDBNull(2) ? null : r.GetString(2)))
+            .ToDictionary(x => x.id, x => (x.bonus, x.phone));
+    }
+
+    public Result SetPhone(long id, string? phone)
+    {
+        phone = string.IsNullOrWhiteSpace(phone) ? null : new string(phone.Where(ch => char.IsDigit(ch) || ch == '+').ToArray());
+        if (phone is { Length: > 16 or < 6 }) return new Result(false, "Недопустимый телефон");
+        using var c = _db.Open();
+        lock (_writeLock) return Db.Exec(c, "UPDATE guests SET phone = $p WHERE id = $i", ("$p", phone), ("$i", id)) > 0 ? new Result(true) : new Result(false, "Гость не найден");
+    }
+
     public List<Guest> Guests(string? search)
     {
         using var c = _db.Open();
@@ -215,9 +231,10 @@ public sealed class ClubService
     /// <summary>Пополнение (amount &gt; 0) или списание (&lt; 0). Баланс не уходит в минус.</summary>
     private readonly ConcurrentDictionary<string, (long ts, int balance)> _topupDone = new();
 
-    public (Result res, int balance) TopUp(long guestId, int amount, string? note, string? requestId = null)
+    public (Result res, int balance) TopUp(long guestId, int amount, string? note, string? requestId = null, string? method = null)
     {
         if (amount == 0 || Math.Abs(amount) > 1_000_000) return (new Result(false, "Недопустимая сумма"), 0);
+        method = method is "cash" or "card" or "sbp" ? method : null; // как гость заплатил (для кассы смены)
         if (note is { Length: > 200 }) note = note[..200];
         lock (_writeLock)
         {
@@ -231,8 +248,8 @@ public sealed class ClubService
         if (bal + amount < 0) return (new Result(false, "Недостаточно средств для списания"), bal.Value);
         if ((long)bal + amount > MaxBalance) return (new Result(false, "Слишком большой баланс"), bal.Value);
         Db.Exec(c, "UPDATE guests SET balance = balance + $a WHERE id = $i", ("$a", amount), ("$i", guestId));
-        Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, ts) VALUES($g, $a, $k, $n, $t)",
-            ("$g", guestId), ("$a", amount), ("$k", amount > 0 ? "topup" : "charge"), ("$n", note), ("$t", Db.Now()));
+        Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, ts, method, shift_id) VALUES($g, $a, $k, $n, $t, $m, $sh)",
+            ("$g", guestId), ("$a", amount), ("$k", amount > 0 ? "topup" : "charge"), ("$n", note), ("$t", Db.Now()), ("$m", method), ("$sh", OpenShiftId(c)));
         tx.Commit();
         if (rid is not null) _topupDone[rid] = (Db.Now(), bal.Value + amount);
         return (new Result(true), bal.Value + amount);
@@ -362,12 +379,18 @@ public sealed class ClubService
         }
         _loginFails.TryRemove(key, out _);
         if (row.g!.Banned) return (false, "Учётная запись заблокирована", null, null);
+        if (ForeignBookingNow(pc.Id, row.g.Id) is { } bk)
+            return (false, $"ПК забронирован с {Local(bk.starts):HH:mm} до {Local(bk.ends):HH:mm}. Займите другой ПК", null, null);
         _guestPc[row.g.Id] = pc.Id;
         BindLogin(pc.Id, row.g.Id, Db.Now() + 30 * 60);
         return (true, null, row.g, Tariffs(pc.Zone));
     }
 
-    public (bool ok, string? error, int balance, int minutes) StartSession(Pc pc, string login, string tariffId)
+    public (bool ok, string? error, int balance, int minutes) StartSession(Pc pc, string login, string tariffId) =>
+        StartSessionEx(pc, login, tariffId) is var r ? (r.ok, r.error, r.balance, r.minutes) : default;
+
+    /// <summary>Покупка сеанса. Сначала тратятся бонусы, остальное — с баланса; с потраченных денег начисляется кешбэк по уровню гостя.</summary>
+    public (bool ok, string? error, int balance, int minutes, int bonus) StartSessionEx(Pc pc, string login, string tariffId)
     {
         lock (_writeLock)
         {
@@ -376,29 +399,47 @@ public sealed class ClubService
             var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", (login ?? "").Trim()));
             // покупать может только тот, кто вошёл на этом ПК по паролю
             if (g is null || !_loggedIn.TryGetValue(pc.Id, out var li) || li.guestId != g.Id || li.until < Db.Now())
-                return (false, "Войдите заново", 0, 0);
-            if (g.Banned) return (false, "Учётная запись заблокирована", 0, 0);
+                return (false, "Войдите заново", 0, 0, 0);
+            if (g.Banned) return (false, "Учётная запись заблокирована", 0, 0, 0);
+            var bonus = Db.Scalar<int>(c, "SELECT bonus FROM guests WHERE id = $i", ("$i", g.Id));
             var t = Tariffs(pc.Zone).FirstOrDefault(x => x.Id == tariffId);
-            if (t is null) return (false, "Тариф не найден", g.Balance, 0);
-            if (t.NightOnly && !IsNight(DateTimeOffset.UtcNow)) return (false, "Ночной тариф с 22:00 до 08:00", g.Balance, 0);
-            if (g.Balance < t.Price) return (false, "Недостаточно средств", g.Balance, 0);
+            if (t is null) return (false, "Тариф не найден", g.Balance, 0, bonus);
+            if (t.NightOnly && !IsNight(DateTimeOffset.UtcNow)) return (false, "Ночной тариф с 22:00 до 08:00", g.Balance, 0, bonus);
+            var fromBonus = Math.Min(bonus, t.Price);
+            var money = t.Price - fromBonus;
+            if (g.Balance < money) return (false, "Недостаточно средств", g.Balance, 0, bonus);
             if (_active.ContainsKey(pc.Id) || _active.Values.Any(a => a.GuestId == g.Id))
-                return (false, "Сеанс уже идёт на этом или другом ПК", g.Balance, 0);
+                return (false, "Сеанс уже идёт на этом или другом ПК", g.Balance, 0, bonus);
 
             var now = Db.Now();
             var ends = now + t.Minutes * 60L;
             if (t.NightOnly) ends = Math.Min(ends, NightEnd(now)); // ночной пакет действует только до 08:00
+            // ПК забронирован другим гостем раньше, чем закончится сеанс
+            if (NextForeignBooking(c, pc.Id, g.Id, now, ends) is { } bk)
+                return (false, $"ПК забронирован с {Local(bk.starts):HH:mm}. Выберите тариф короче или другой ПК", g.Balance, 0, bonus);
             var minutes = (int)((ends - now) / 60);
-            Db.Exec(c, "UPDATE guests SET balance = balance - $p WHERE id = $g", ("$p", t.Price), ("$g", g.Id));
+            var cashback = money * CashbackPct(c, g.Id) / 100;
+            Db.Exec(c, "UPDATE guests SET balance = balance - $p, bonus = bonus - $b + $cb WHERE id = $g", ("$p", money), ("$b", fromBonus), ("$cb", cashback), ("$g", g.Id));
             Db.Exec(c, "INSERT INTO sessions(guest_id, pc_id, tariff_id, started, ends, price) VALUES($g, $pc, $t, $s, $e, $pr)",
                 ("$g", g.Id), ("$pc", pc.Id), ("$t", t.Id), ("$s", now), ("$e", ends), ("$pr", t.Price));
             var sid = Db.LastId(c);
-            Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, session_id, ts) VALUES($g, $a, 'session', $n, $s, $t)",
-                ("$g", g.Id), ("$a", -t.Price), ("$n", $"{t.Name} · {pc.Name}"), ("$s", sid), ("$t", now));
+            // tx: деньги (kind session — это выручка), бонусы отдельно (bonus_spent / cashback не выручка)
+            if (money > 0)
+                Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, session_id, ts, shift_id) VALUES($g, $a, 'session', $n, $s, $t, $sh)",
+                    ("$g", g.Id), ("$a", -money), ("$n", $"{t.Name} · {pc.Name}"), ("$s", sid), ("$t", now), ("$sh", OpenShiftId(c)));
+            if (fromBonus > 0)
+                Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, session_id, ts) VALUES($g, $a, 'bonus_spent', $n, $s, $t)",
+                    ("$g", g.Id), ("$a", -fromBonus), ("$n", $"Бонусами: {t.Name} · {pc.Name}"), ("$s", sid), ("$t", now));
+            if (cashback > 0)
+                Db.Exec(c, "INSERT INTO tx(guest_id, amount, kind, note, session_id, ts) VALUES($g, $a, 'cashback', $n, $s, $t)",
+                    ("$g", g.Id), ("$a", cashback), ("$n", "Кешбэк бонусами"), ("$s", sid), ("$t", now));
+            // гость пришёл на свою бронь: она выполнена
+            Db.Exec(c, "UPDATE bookings SET status = 'done' WHERE pc_id = $p AND guest_id = $g AND status = 'active' AND starts - 1800 <= $n AND ends > $n",
+                ("$p", pc.Id), ("$g", g.Id), ("$n", now));
             tx.Commit();
             _active[pc.Id] = new SessionInfo(sid, g.Id, g.Login, pc.Id, pc.Name, t.Id, now, ends, null, t.Price, null);
             BindLogin(pc.Id, g.Id, ends + 30 * 60);
-            return (true, null, g.Balance - t.Price, minutes);
+            return (true, null, g.Balance - money, minutes, bonus - fromBonus + cashback);
         }
     }
 
@@ -536,6 +577,7 @@ public sealed class ClubService
 
     public void SeedDefaults(bool demo)
     {
+        SeedLevels();
         using var c = _db.Open();
         if (Db.Scalar<long>(c, "SELECT COUNT(*) FROM tariffs") == 0)
         {

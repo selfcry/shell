@@ -82,9 +82,51 @@ public sealed class Db
               action TEXT NOT NULL,
               details TEXT);
             CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
+            CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE IF NOT EXISTS shifts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              opened INTEGER NOT NULL,
+              closed INTEGER,
+              cashier TEXT NOT NULL,
+              cash_open INTEGER NOT NULL DEFAULT 0,
+              cash_close INTEGER,
+              note TEXT);
+            CREATE TABLE IF NOT EXISTS levels (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              min_spent INTEGER NOT NULL,
+              cashback_pct INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS promos (
+              code TEXT PRIMARY KEY COLLATE NOCASE,
+              bonus INTEGER NOT NULL,
+              max_uses INTEGER NOT NULL DEFAULT 0,
+              used INTEGER NOT NULL DEFAULT 0,
+              expires INTEGER,
+              active INTEGER NOT NULL DEFAULT 1,
+              created INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS promo_uses (
+              code TEXT NOT NULL COLLATE NOCASE,
+              guest_id INTEGER NOT NULL REFERENCES guests(id),
+              ts INTEGER NOT NULL,
+              PRIMARY KEY (code, guest_id));
+            CREATE TABLE IF NOT EXISTS bookings (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              pc_id INTEGER NOT NULL REFERENCES pcs(id),
+              guest_id INTEGER NOT NULL REFERENCES guests(id),
+              starts INTEGER NOT NULL,
+              ends INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'active',
+              note TEXT,
+              created INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS ix_bookings_pc ON bookings(pc_id, starts) WHERE status = 'active';
             """);
         // миграции: новые колонки добавляются к уже существующей базе
         AddColumn(c, "pcs", "deleted", "INTEGER NOT NULL DEFAULT 0");
+        AddColumn(c, "tx", "method", "TEXT");            // cash | card | sbp — для пополнений через кассу
+        AddColumn(c, "tx", "shift_id", "INTEGER");       // смена, в которую проведена операция
+        AddColumn(c, "guests", "bonus", "INTEGER NOT NULL DEFAULT 0");
+        AddColumn(c, "guests", "phone", "TEXT");
+        Exec(c, "CREATE INDEX IF NOT EXISTS ix_tx_shift ON tx(shift_id) WHERE shift_id IS NOT NULL");
 
     }
 

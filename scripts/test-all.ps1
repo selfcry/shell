@@ -140,6 +140,30 @@ Call POST "/api/pc/session/stop" $pc @{ username = $chk } | Out-Null
 Check "сеанс завершён" (((Call GET "/api/admin/sessions?active=true" $adm).Data | Where-Object { $_.guest -eq $chk }) -eq $null)
 Check "сводка админки отвечает" ((Call GET "/api/admin/stats" $adm).Data.guests -ge 4)
 
+# касса, бонусы, промокод, вызов, бронь
+$cur = (Call GET "/api/admin/shift" $adm).Data
+if ($cur.shift) { Call POST "/api/admin/shift/close" $adm @{ cash = 0 } | Out-Null }
+Check "смена открыта" ((Call POST "/api/admin/shift/open" $adm @{ cashier = "Тест"; cash = 1000 }).Data.ok -eq $true)
+$chkId = ((Call GET "/api/admin/guests?q=$chk" $adm).Data | Where-Object { $_.login -eq $chk }).id
+Check "пополнение наличными в смену" ((Call POST "/api/admin/guests/$chkId/topup" $adm @{ amount = 300; method = "cash" }).Data.ok -eq $true)
+$rep = (Call GET "/api/admin/shift" $adm).Data.report
+Check "отчёт смены: наличные 300, в кассе 1300" ($rep.topupCash -eq 300 -and $rep.cashExpected -eq 1300)
+$promo = "T" + (Get-Random -Minimum 10000 -Maximum 99999)
+Call PUT "/api/admin/promos" $adm @{ code = $promo; bonus = 50; maxUses = 5 } | Out-Null
+Call POST "/api/pc/login" $pc @{ username = $chk; password = "check12345" } | Out-Null
+Check "промокод даёт бонусы" ((Call POST "/api/pc/promo" $pc @{ username = $chk; code = $promo }).Data.bonus -ge 50)
+Check "повторно промокод не принимается" ((Call POST "/api/pc/promo" $pc @{ username = $chk; code = $promo }).Data.ok -eq $false)
+Check "вызов администратора виден в админке" ((Call POST "/api/pc/call" $pc @{ username = $chk }).Data.ok -eq $true -and ((Call GET "/api/admin/calls" $adm).Data | Where-Object { $_.pc -eq $pcName }))
+$pcId = ((Call GET "/api/admin/pcs" $adm).Data | Where-Object { $_.name -eq $pcName }).id
+Call POST "/api/admin/calls/$pcId/ack" $adm | Out-Null
+$soon = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 300
+Check "бронь создана" ((Call POST "/api/admin/bookings" $adm @{ pcId = $pcId; login = "demo"; starts = $soon; minutes = 60 }).Data.ok -eq $true)
+Check "чужой гость не входит на забронированный ПК" ((Call POST "/api/pc/login" $pc @{ username = $chk; password = "check12345" }).Data.ok -eq $false)
+$bk = ((Call GET "/api/admin/bookings" $adm).Data | Where-Object { $_.pcId -eq $pcId }).id
+Call DELETE "/api/admin/bookings/$bk" $adm | Out-Null
+Check "смена закрыта, отчёт пришёл" ((Call POST "/api/admin/shift/close" $adm @{ cash = 1300 }).Data.report.cashDiff -eq 0)
+Check "аналитика отвечает" ((Call GET "/api/admin/analytics?days=7" $adm).Status -eq 200)
+
 Write-Host ""
 if ($script:fails -eq 0) { Write-Host "Автопроверки сервера: все пройдены." -ForegroundColor Green }
 else { Write-Host "Автопроверки сервера: ошибок $($script:fails). Дальше смотрите server.log." -ForegroundColor Red }

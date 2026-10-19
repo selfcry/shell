@@ -11,7 +11,7 @@ namespace ClubShell.Core;
 /// Окно → служба:
 ///   status    {locked, sessionActive}               — раз в 2 с; служба по нему проверяет, что окно живо и заблокировано
 ///   adminPin  {pin}                                 — запрос на выход для обслуживания
-///   request   {id, op, username, password, birth, packageId} — op: login | register | logout | start | stop | catalog | speedtest
+///   request   {id, op, username, password, birth, packageId, code} — op: login | register | logout | start | stop | catalog | speedtest | call | promo
 /// Служба → окно:
 ///   hello     {pcName, zone, requireService, serverUrl} — сразу после подключения (serverUrl — для обложек и пинга, не секрет)
 ///   state     {offline, reason}                     — раз в 2 с; offline=true значит «заблокировать»
@@ -55,6 +55,9 @@ public sealed class PipeMessage
     public string? Error { get; set; }
     public bool Fail { get; set; }
     public List<TariffPackage>? Packages { get; set; }
+    public int Bonus { get; set; }
+    public LoyaltyInfo? Loyalty { get; set; }
+    public string? Code { get; set; }   // промокод
     public int Minutes { get; set; }
     public CatalogSnapshot? Catalog { get; set; }
     public SpeedResult? Speed { get; set; }

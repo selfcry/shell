@@ -4,7 +4,7 @@ import "@fontsource/russo-one/400.css";
 import "./styles.css";
 
 import { onMessage, send } from "./bridge";
-import { el } from "./dom";
+import { el, formatTime } from "./dom";
 import { icons } from "./icons";
 import type { FromHost, PinnedItem, WindowItem } from "./protocol";
 
@@ -35,7 +35,27 @@ const pingChip = el("span", { class: "tb-ping", text: "— мс", attrs: { title
 const speedBtn = el("button", { class: "tb-speed", text: "Тест скорости", attrs: { title: "Измерить скорость интернета" } });
 const clock = el("div", { class: "tb-clock" });
 
-const tray = el("div", { class: "tb-tray" }, [mgrBtn, lang, volGroup, el("div", { class: "tb-net" }, [netIcon, netText, pingChip, speedBtn]), clock]);
+// ---------- сеанс: сколько осталось, баланс, вызов администратора ----------
+const sessTime = el("b", { class: "tb-sess-time", text: "--:--" });
+const sessMoney = el("span", { class: "tb-sess-money", text: "" });
+const sessBox = el("div", { class: "tb-sess", attrs: { title: "Осталось времени и баланс", hidden: "" } }, [sessTime, sessMoney]);
+const callBtn = el("button", { class: "tb-call", text: "🔔 Админ", attrs: { title: "Позвать администратора" } });
+callBtn.addEventListener("click", () => {
+  callBtn.disabled = true;
+  send({ type: "callAdmin" });
+  window.setTimeout(() => (callBtn.disabled = false), 5000);
+});
+let sessLeft: number | null = null;
+function renderSession(): void {
+  sessBox.hidden = sessLeft === null;
+  if (sessLeft === null) return;
+  sessTime.textContent = formatTime(sessLeft);
+  sessBox.classList.toggle("low", sessLeft < 600);
+}
+// между сообщениями хоста (раз в секунду) время идёт само, чтобы не дёргалось
+window.setInterval(() => { if (sessLeft !== null && sessLeft > 0) { sessLeft--; renderSession(); } }, 1000);
+
+const tray = el("div", { class: "tb-tray" }, [sessBox, callBtn, mgrBtn, lang, volGroup, el("div", { class: "tb-net" }, [netIcon, netText, pingChip, speedBtn]), clock]);
 app.append(el("div", { class: "tb" }, [deskBtn, pins, list, tray]));
 
 // ---------- закреплённые программы ----------
@@ -140,6 +160,15 @@ onMessage((msg: FromHost) => {
   switch (msg.type) {
     case "pinned":
       renderPins(msg.items);
+      break;
+    case "session":
+      sessLeft = msg.remainingSec;
+      sessMoney.textContent = msg.remainingSec === null ? "" : `${msg.balance} ₽${msg.bonus ? ` · ${msg.bonus} б.` : ""}`;
+      renderSession();
+      break;
+    case "callResult":
+      callBtn.textContent = msg.ok ? "🔔 Вызван" : "🔔 Админ";
+      if (msg.ok) window.setTimeout(() => (callBtn.textContent = "🔔 Админ"), 60_000);
       break;
     case "windows":
       windows = msg.items;

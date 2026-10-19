@@ -86,7 +86,12 @@ export type ToHost =
   | { type: "setVolume"; value: number } // 0..100
   | { type: "setMute"; muted: boolean }
   | { type: "reboot" }
+  | { type: "callAdmin" } // «Позвать администратора»
+  | { type: "promo"; code: string } // ввести промокод
   | { type: "adminExit"; pin: string };
+
+/** Уровень гостя в программе лояльности. */
+export interface LoyaltyInfo { bonus: number; spent: number; level: string | null; cashbackPct: number; nextLevel: string | null; toNext: number }
 
 export type FromHost =
   | { type: "settings"; serverUrl: string; hasKey: boolean }
@@ -101,7 +106,13 @@ export type FromHost =
       user?: string;
       balance?: number;
       packages?: TariffPackage[];
+      bonus?: number;
+      loyalty?: LoyaltyInfo | null;
     }
+  | { type: "bonus"; bonus: number } // бонусов стало столько (после покупки или промокода)
+  | { type: "promoResult"; ok: boolean; error?: string; bonus?: number }
+  | { type: "callResult"; ok: boolean; text?: string }
+  | { type: "session"; remainingSec: number | null; balance: number; bonus: number } // для панели задач
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }
   | { type: "sessionEnded"; reason: string }

@@ -132,3 +132,13 @@ body.on-desktop .backdrop video { opacity: 0.18; }
 .hm-toast.show { opacity: 1; transform: translate(-50%, 0); }
 .hm-toast.ok { border-color: rgba(255, 152, 0, 0.6); }
 .hm-toast.error { border-color: rgba(255, 77, 77, 0.6); color: var(--danger); }
+
+/* бонусы, уровень, промокод, вызов администратора */
+.hm-bonus { margin-top: 0.2rem; font-weight: 700; font-size: 0.95rem; color: #f5ff00; }
+.hm-promo { display: flex; gap: 0.4rem; margin-top: 0.7rem; }
+.hm-promo-input { flex: 1; min-width: 0; padding: 0.55rem 0.7rem; border-radius: 0.7rem; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--text); font: 600 0.85rem var(--font-body); text-transform: uppercase; outline: none; }
+.hm-promo-input:focus { border-color: var(--orange); }
+.hm-promo-btn { padding: 0 0.9rem; border-radius: 0.7rem; border: 1px solid var(--line); background: transparent; color: var(--text); font: 700 0.85rem var(--font-body); cursor: pointer; }
+.hm-promo-btn:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+.hm-call { margin-top: auto; }
+.hm-call:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }

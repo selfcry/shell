@@ -73,6 +73,7 @@ export class MockHost {
         this.emit({ type: "network", online: true, name: "Ethernet", speedMbps: 1000 });
         this.emitWindows();
         this.emit({ type: "ping", ms: 14 });
+        this.emit({ type: "session", remainingSec: 3540, balance: 460, bonus: 120 });
         this.emit({ type: "pinned", items: [{ id: "browser", title: "Браузер" }, { id: "discord", title: "Discord" }, { id: "telegram", title: "Telegram" }] });
         window.setInterval(() => this.emit({ type: "ping", ms: 10 + Math.round(Math.random() * 40) }), 4000);
         break;
@@ -129,9 +130,18 @@ export class MockHost {
           break;
         }
         this.balance = u.balance;
-        this.emit({ type: "loginResult", ok: true, user: msg.username, balance: u.balance, packages: PACKAGES });
+        this.emit({ type: "loginResult", ok: true, user: msg.username, balance: u.balance, packages: PACKAGES, bonus: 120,
+          loyalty: { bonus: 120, spent: 2600, level: "Бронза", cashbackPct: 3, nextLevel: "Серебро", toNext: 2400 } });
         break;
       }
+      case "callAdmin":
+        window.setTimeout(() => this.emit({ type: "callResult", ok: true, text: "Администратор вызван, он скоро подойдёт" }), 300);
+        break;
+      case "promo":
+        window.setTimeout(() => this.emit(msg.code.toUpperCase() === "WELCOME"
+          ? { type: "promoResult", ok: true, bonus: 220 }
+          : { type: "promoResult", ok: false, error: "Промокод не найден" }), 300);
+        break;
       case "register": {
         if (USERS[msg.username]) {
           this.emit({ type: "loginResult", ok: false, error: "Этот логин уже занят" });

@@ -39,6 +39,7 @@ builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
 builder.Services.AddSingleton(tz);
 builder.Services.AddSingleton<PcHub>();
+builder.Services.AddSingleton<Telegram>();
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -107,7 +108,7 @@ pc.MapPost("/login", (HttpContext ctx, LoginReq req) =>
     club.Touch(p.Id);
     var (ok, error, guest, tariffs) = club.Login(p, req.Username, req.Password);
     return ok
-        ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, packages = tariffs!.Select(Pkg) })
+        ? Results.Ok(new { ok = true, user = guest!.Login, balance = guest.Balance, bonus = club.BonusOf(guest.Id), loyalty = club.Loyalty(guest.Id), packages = tariffs!.Select(Pkg) })
         : Results.Ok(new { ok = false, error });
 });
 
@@ -180,8 +181,8 @@ pc.MapPost("/speedtest/up", async (HttpContext ctx) =>
 pc.MapPost("/session/start", (HttpContext ctx, StartReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
-    var (ok, error, balance, minutes) = club.StartSession(p, req.Username, req.PackageId);
-    return Results.Ok(new { ok, error, balance, minutes });
+    var (ok, error, balance, minutes, bonus) = club.StartSessionEx(p, req.Username, req.PackageId);
+    return Results.Ok(new { ok, error, balance, minutes, bonus });
 });
 
 pc.MapPost("/session/stop", (HttpContext ctx, StopReq req) =>
@@ -190,6 +191,22 @@ pc.MapPost("/session/stop", (HttpContext ctx, StopReq req) =>
     var s = club.EndSession(p.Id, "Гость завершил сеанс");
     club.Logout(p.Id); // после завершения купить время снова можно только после нового входа
     return Results.Ok(new { ok = true, ended = s is not null });
+});
+
+// «Позвать администратора»: в админке звук и подсветка ПК, в Telegram — сообщение.
+pc.MapPost("/call", (HttpContext ctx, CallReq req, Telegram tg) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    if (!club.CallAdmin(p, req.Username)) return Results.Ok(new { ok = true, repeated = true });
+    tg.Notify($"🔔 {p.Name}: гость зовёт администратора{(string.IsNullOrWhiteSpace(req.Username) ? "" : $" ({req.Username})")}");
+    return Results.Ok(new { ok = true });
+});
+
+pc.MapPost("/promo", (HttpContext ctx, PromoReq req) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    var (r, bonus) = club.RedeemPromo(p, req.Username, req.Code);
+    return Results.Ok(new { ok = r.Ok, error = r.Error, bonus });
 });
 
 pc.MapPost("/heartbeat", (HttpContext ctx, HeartbeatReq req) =>
@@ -269,12 +286,16 @@ admin.MapGet("/pcs", (PcHub hub) =>
 {
     var now = Db.Now();
     var active = club.Sessions(activeOnly: true).ToDictionary(s => s.PcId);
+    var bookings = club.NextBookings();
+    var calls = club.Calls().ToDictionary(x => x.PcId);
     return Results.Ok(club.Pcs().Select(p => new
     {
         id = p.Id, name = p.Name, zone = p.Zone,
         online = hub.IsConnected(p.Id) || now - p.LastSeen < 20,
         lastSeen = p.LastSeen,
         session = active.TryGetValue(p.Id, out var s) ? new { id = s.Id, guest = s.Guest, tariff = s.TariffId, started = s.Started, remainingSec = Math.Max(0, s.Ends - now) } : null,
+        booking = bookings.TryGetValue(p.Id, out var b) ? new { id = b.Id, guest = b.Guest, starts = b.Starts, ends = b.Ends } : null,
+        call = calls.TryGetValue(p.Id, out var call) ? new { ts = call.Ts, guest = call.Guest } : null,
     }));
 });
 
@@ -309,7 +330,21 @@ admin.MapPost("/pcs/{id:long}/command", async (long id, CommandReq req, PcHub hu
     return Results.Ok(new { ok = true, delivered });
 });
 
-admin.MapGet("/guests", (string? q) => Results.Ok(club.Guests(q).Select(g => new { id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created })));
+admin.MapGet("/guests", (string? q) =>
+{
+    var extra = club.GuestExtras();
+    return Results.Ok(club.Guests(q).Select(g => new
+    {
+        id = g.Id, login = g.Login, balance = g.Balance, birth = g.Birth, banned = g.Banned, created = g.Created,
+        bonus = extra.GetValueOrDefault(g.Id).bonus, phone = extra.GetValueOrDefault(g.Id).phone,
+    }));
+});
+admin.MapGet("/guests/{id:long}/loyalty", (long id) => Results.Ok(club.Loyalty(id)));
+admin.MapPost("/guests/{id:long}/bonus", (long id, BonusReq req) =>
+{
+    var (r, bonus) = club.AdjustBonus(id, req.Amount, req.Note);
+    return r.Ok ? Results.Ok(new { ok = true, bonus }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
 admin.MapPost("/guests", (NewGuestReq req) =>
 {
     var r = club.CreateGuest(req.Login, req.Password, req.Balance ?? 0, req.Birth);
@@ -318,15 +353,17 @@ admin.MapPost("/guests", (NewGuestReq req) =>
 admin.MapPut("/guests/{id:long}", (long id, UpdateGuestReq req) =>
 {
     var r = club.UpdateGuest(id, req.Password, req.Banned, req.Birth);
+    if (r.Ok && req.Phone is not null) r = club.SetPhone(id, req.Phone);
     return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
 });
 admin.MapPost("/guests/{id:long}/topup", async (long id, TopUpReq req, PcHub hub, HttpContext http) =>
 {
-    var (r, balance) = club.TopUp(id, req.Amount, req.Note, req.RequestId);
+    var (r, balance) = club.TopUp(id, req.Amount, req.Note, req.RequestId, req.Method);
     if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
     http.Items["audited"] = true;
     if (r.Error == "duplicate") return Results.Ok(new { ok = true, balance }); // повтор того же запроса: ничего не делаем
-    Audit(http, req.Amount > 0 ? "Пополнение" : "Списание", $"гость #{id}: {req.Amount:+#;-#} ₽, баланс {balance} ₽{(string.IsNullOrWhiteSpace(req.Note) ? "" : " · " + req.Note)}");
+    var how = req.Method switch { "cash" => " наличными", "card" => " картой", "sbp" => " по СБП", _ => "" };
+    Audit(http, req.Amount > 0 ? "Пополнение" : "Списание", $"гость #{id}: {req.Amount:+#;-#} ₽{how}, баланс {balance} ₽{(string.IsNullOrWhiteSpace(req.Note) ? "" : " · " + req.Note)}");
     // Гость уже сидит за ПК: сразу присылаем ему новый баланс, чтобы не перезаходить.
     if (club.BalanceTarget(id) is { } t) await hub.SendAsync(t.pcId, new { type = "command", name = "balance", user = t.login, balance = t.balance });
     return Results.Ok(new { ok = true, balance });
@@ -358,6 +395,71 @@ admin.MapPost("/sessions/{id:long}/add-time", async (long id, AddTimeReq req, Pc
 });
 
 // Обложки игр: имена файлов содержат случайную часть и не меняются, поэтому кэшируются надолго.
+// ---- смены и касса ----
+admin.MapGet("/shift", () =>
+{
+    var sh = club.CurrentShift();
+    return Results.Ok(new { shift = sh, report = sh is null ? null : club.ShiftReportOf(sh.Id) });
+});
+admin.MapPost("/shift/open", (ShiftOpenReq req) =>
+{
+    var (r, sh) = club.OpenShift(req.Cashier, req.Cash);
+    return r.Ok ? Results.Ok(new { ok = true, shift = sh }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapPost("/shift/close", (ShiftCloseReq req, Telegram tg) =>
+{
+    var (r, report) = club.CloseShift(req.Cash, req.Note);
+    if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
+    tg.Notify(club.ShiftReportText(report!));
+    return Results.Ok(new { ok = true, report });
+});
+admin.MapGet("/shifts", () => Results.Ok(club.Shifts()));
+admin.MapGet("/shifts/{id:long}", (long id) => club.ShiftReportOf(id) is { } r ? Results.Ok(r) : Results.NotFound(new { ok = false }));
+
+// ---- аналитика ----
+admin.MapGet("/analytics", (int? days) => Results.Ok(club.Analytics(days ?? 7)));
+
+// ---- лояльность ----
+admin.MapGet("/levels", () => Results.Ok(club.Levels()));
+admin.MapPut("/levels", (List<LevelReq> req) =>
+{
+    var r = club.SetLevels(req.Select(l => (l.Name, l.MinSpent, l.CashbackPct)).ToList());
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapGet("/promos", () => Results.Ok(club.Promos()));
+admin.MapPut("/promos", (PromoUpsertReq req) =>
+{
+    var r = club.UpsertPromo(req.Code, req.Bonus, req.MaxUses ?? 0, req.Expires, req.Active ?? true);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+
+// ---- бронирование ----
+admin.MapGet("/bookings", (bool? all) => Results.Ok(club.Bookings(upcomingOnly: all != true)));
+admin.MapPost("/bookings", (BookingReq req) =>
+{
+    var (r, b) = club.CreateBooking(req.PcId, req.Login, req.Starts, req.Minutes, req.Note);
+    return r.Ok ? Results.Ok(new { ok = true, booking = b }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapDelete("/bookings/{id:long}", (long id) => club.CancelBooking(id) ? Results.Ok(new { ok = true }) : Results.NotFound(new { ok = false, error = "Бронь не найдена или уже не активна" }));
+
+// ---- вызовы администратора ----
+admin.MapGet("/calls", () => Results.Ok(club.Calls()));
+admin.MapPost("/calls/{pcId:long}/ack", (long pcId) => Results.Ok(new { ok = club.AckCall(pcId) }));
+
+// ---- настройки: Telegram ----
+admin.MapGet("/settings/telegram", (Telegram tg) => Results.Ok(new { configured = tg.Configured, chat = club.Setting("tg_chat") }));
+admin.MapPut("/settings/telegram", (TelegramReq req) =>
+{
+    if (req.Token is not null) club.SetSetting("tg_token", req.Token.Trim());
+    if (req.Chat is not null) club.SetSetting("tg_chat", req.Chat.Trim());
+    return Results.Ok(new { ok = true });
+});
+admin.MapPost("/settings/telegram/test", async (Telegram tg) =>
+{
+    var (ok, error) = await tg.SendAsync("✅ Мираж PRO: уведомления подключены");
+    return Results.Ok(new { ok, error });
+});
+
 app.MapGet("/covers/{name}", (string name, HttpContext ctx) =>
 {
     var path = catalog.CoverPath(name);

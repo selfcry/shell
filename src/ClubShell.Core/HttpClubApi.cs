@@ -15,8 +15,9 @@ public sealed class HttpClubApi : IClubApi, IDisposable
         _http.DefaultRequestHeaders.Add("X-Pc-Token", pcToken);
     }
 
-    private sealed record LoginDto(bool Ok, string? Error, string? User, int Balance, List<TariffPackage>? Packages);
-    private sealed record StartDto(bool Ok, string? Error, int Balance, int Minutes);
+    private sealed record LoginDto(bool Ok, string? Error, string? User, int Balance, List<TariffPackage>? Packages, int Bonus, LoyaltyInfo? Loyalty);
+    private sealed record StartDto(bool Ok, string? Error, int Balance, int Minutes, int Bonus);
+    private sealed record PromoDto(bool Ok, string? Error, int Bonus);
 
     // Любая ошибка транспорта или ответ не 2xx становится HttpRequestException: так окно и служба понимают, что «связи нет».
     private async Task<T> PostAsync<T>(string url, object body)
@@ -29,7 +30,7 @@ public sealed class HttpClubApi : IClubApi, IDisposable
     public async Task<LoginResult> LoginAsync(string pcId, string username, string password)
     {
         var r = await PostAsync<LoginDto>("api/pc/login", new { username, password });
-        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
+        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages, r.Bonus, r.Loyalty);
     }
 
     public async Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth)
@@ -53,7 +54,7 @@ public sealed class HttpClubApi : IClubApi, IDisposable
     public async Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)
     {
         var r = await PostAsync<StartDto>("api/pc/session/start", new { username, packageId });
-        return new StartResult(r.Ok, r.Error, r.Balance, r.Minutes);
+        return new StartResult(r.Ok, r.Error, r.Balance, r.Minutes, r.Bonus);
     }
 
     public async Task StopSessionAsync(string pcId, string username) =>
@@ -66,6 +67,14 @@ public sealed class HttpClubApi : IClubApi, IDisposable
     {
         var r = await PostAsync<HeartbeatDto>("api/pc/heartbeat", new { username });
         return r.Session is { } s ? new HeartbeatInfo(s.RemainingSec > 0, s.RemainingSec, s.User) : new HeartbeatInfo(false, 0, null);
+    }
+
+    public async Task<bool> CallAdminAsync(string? username) => (await PostAsync<JsonElement>("api/pc/call", new { username })).GetProperty("ok").GetBoolean();
+
+    public async Task<PromoResult> RedeemPromoAsync(string username, string code)
+    {
+        var r = await PostAsync<PromoDto>("api/pc/promo", new { username, code });
+        return new PromoResult(r.Ok, r.Error, r.Bonus);
     }
 
     public void Dispose() => _http.Dispose();

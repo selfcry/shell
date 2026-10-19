@@ -15,10 +15,21 @@ public record HeartbeatReq(string? Username);
 // админ
 public record NewPcReq(string Name, string? Zone);
 public record NewGuestReq(string Login, string Password, int? Balance, string? Birth);
-public record UpdateGuestReq(string? Password, bool? Banned, string? Birth);
-public record TopUpReq(int Amount, string? Note, string? RequestId); // RequestId: повтор того же запроса (двойной клик) не проводится второй раз
+public record UpdateGuestReq(string? Password, bool? Banned, string? Birth, string? Phone);
+public record TopUpReq(int Amount, string? Note, string? RequestId, string? Method); // RequestId: повтор того же запроса (двойной клик) не проводится второй раз
 public record TariffReq(string Id, string Name, int Minutes, int Price, bool NightOnly, string? Zone, bool? Active, int? Sort);
 public record AppReq(string? Id, string? Title, string? Kind, string? Group, List<string>? Paths, string? Args, string? WorkDir, bool? ClubAccount, int? MinAge, bool? Enabled, bool? Pinned, int? Sort);
 public record BlockedReq(string? Process, string? Note);
 public record CommandReq(string Name, string? Text);
 public record AddTimeReq(int Minutes);
+
+// касса, лояльность, брони, вызовы
+public record CallReq(string? Username);
+public record PromoReq(string Username, string Code);
+public record ShiftOpenReq(string Cashier, int Cash);
+public record ShiftCloseReq(int Cash, string? Note);
+public record LevelReq(string Name, int MinSpent, int CashbackPct);
+public record PromoUpsertReq(string Code, int Bonus, int? MaxUses, long? Expires, bool? Active);
+public record BonusReq(int Amount, string? Note);
+public record BookingReq(long PcId, string Login, long Starts, int Minutes, string? Note);
+public record TelegramReq(string? Token, string? Chat);

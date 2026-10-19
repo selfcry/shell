@@ -47,6 +47,20 @@ internal sealed class TaskbarForm : Form
     /// <summary>Рабочая область изменилась (панель появилась, исчезла или сдвинулась).</summary>
     public event Action? Reserved;
 
+    /// <summary>Гость нажал «Позвать администратора» на панели.</summary>
+    public event Action? CallAdmin;
+
+    private string _sessionJson = "";
+
+    /// <summary>Остаток времени и баланс на панели (null — сеанса нет, блок скрыт).</summary>
+    public void SetSession(int? remainingSec, int balance, int bonus)
+    {
+        _sessionJson = JsonSerializer.Serialize(new { type = "session", remainingSec, balance, bonus }, Json);
+        if (_webReady) PostRaw(_sessionJson);
+    }
+
+    public void CallResult(bool ok) => Post(new { type = "callResult", ok });
+
     public TaskbarForm(CoreWebView2Environment env, Action showDesktop, Action openTaskManager, Action<string> launch)
     {
         _env = env;
@@ -209,6 +223,7 @@ internal sealed class TaskbarForm : Form
                 case "ready":
                     _lastWindowsJson = "";
                     if (_pinnedJson.Length > 0) PostRaw(_pinnedJson);
+                    if (_sessionJson.Length > 0) PostRaw(_sessionJson);
                     PostWindows();
                     PostAudio();
                     PostNetwork();
@@ -240,6 +255,10 @@ internal sealed class TaskbarForm : Form
 
                 case "speedTest":
                     _ = RunSpeedTestAsync();
+                    break;
+
+                case "callAdmin":
+                    CallAdmin?.Invoke();
                     break;
 
                 case "setVolume":

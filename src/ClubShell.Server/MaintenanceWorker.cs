@@ -31,6 +31,7 @@ public sealed class MaintenanceWorker : BackgroundService
                 {
                     _club.FlushPresence();
                     _club.PruneLoginState();
+                    _club.ExpireBookings(); // брони, на которые не пришли
                     var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz); // 04:00 по времени клуба, а не сервера
                     if (local.Hour == 4 && DateOnly.FromDateTime(local.DateTime) != _lastBackup) Backup(local);
                 }

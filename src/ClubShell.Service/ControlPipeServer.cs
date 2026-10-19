@@ -180,7 +180,7 @@ public sealed class ControlPipeServer : BackgroundService
                         ? await _api.LoginAsync(_config.PcName, user, req.Password ?? "")
                         : await _api.RegisterAsync(_config.PcName, user, req.Password ?? "", req.Birth ?? "");
                     if (r.Ok && _link.ServerSessionActive != true) _link.SetUser(r.User);
-                    (resp.Ok, resp.Error, resp.User, resp.Balance, resp.Packages) = (r.Ok, r.Error, r.User, r.Balance, r.Packages?.ToList());
+                    (resp.Ok, resp.Error, resp.User, resp.Balance, resp.Packages, resp.Bonus, resp.Loyalty) = (r.Ok, r.Error, r.User, r.Balance, r.Packages?.ToList(), r.Bonus, r.Loyalty);
                     break;
                 }
                 case "logout":
@@ -192,7 +192,7 @@ public sealed class ControlPipeServer : BackgroundService
                     if (_link.User is not { } user) { resp.Error = "Сначала войдите"; break; }
                     var r = await _api.StartSessionAsync(_config.PcName, user, req.PackageId ?? "");
                     if (r.Ok) _link.SetServerSession(true); // не ждём пульса, иначе контроль сеанса мог бы счесть разблокировку нарушением
-                    (resp.Ok, resp.Error, resp.Balance, resp.Minutes) = (r.Ok, r.Error, r.Balance, r.Minutes);
+                    (resp.Ok, resp.Error, resp.Balance, resp.Minutes, resp.Bonus) = (r.Ok, r.Error, r.Balance, r.Minutes, r.Bonus);
                     break;
                 }
                 case "stop":
@@ -202,6 +202,17 @@ public sealed class ControlPipeServer : BackgroundService
                     if (user is not null) await _api.StopSessionAsync(_config.PcName, user);
                     _link.SetUser(null);
                     resp.Ok = true;
+                    break;
+                }
+                case "call":
+                    resp.Ok = await _api.CallAdminAsync(_link.User);
+                    break;
+                case "promo":
+                {
+                    // промокод — тому, кто вошёл через службу, а не имени из запроса
+                    if (_link.User is not { } user) { resp.Error = "Сначала войдите"; break; }
+                    var r = await _api.RedeemPromoAsync(user, req.Code ?? "");
+                    (resp.Ok, resp.Error, resp.Bonus) = (r.Ok, r.Error, r.Bonus);
                     break;
                 }
                 case "catalog":

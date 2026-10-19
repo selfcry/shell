@@ -32,6 +32,8 @@ const login = buildLogin({
 const home = buildHome({
   onLaunch: (id) => send({ type: "launch", id }),
   onStartSession: (packageId) => send({ type: "startSession", packageId }),
+  onCallAdmin: () => send({ type: "callAdmin" }),
+  onPromo: (code) => send({ type: "promo", code }),
   onEndSession: () => send({ type: "stopSession" }),
   onLogout: () => logout(),
   onOpenExplorer: () => send({ type: "openExplorer" }),
@@ -106,6 +108,7 @@ onMessage((msg: FromHost) => {
       if (msg.ok) {
         loggedIn = true;
         home.setLogin(msg.user ?? "", msg.balance ?? 0, msg.packages ?? []);
+        home.setBonus(msg.bonus ?? 0, msg.loyalty ?? null);
         show("home");
       } else {
         login.setError(msg.error ?? "Не удалось войти");
@@ -123,6 +126,16 @@ onMessage((msg: FromHost) => {
       break;
     case "balance":
       home.setBalance(msg.balance);
+      break;
+    case "bonus":
+      home.setBonus(msg.bonus);
+      break;
+    case "promoResult":
+      home.promoResult(msg.ok, msg.error);
+      if (msg.ok && msg.bonus !== undefined) home.setBonus(msg.bonus);
+      break;
+    case "callResult":
+      home.callResult(msg.ok, msg.text);
       break;
     case "notice":
       if (current === "home") home.notice(msg.text);

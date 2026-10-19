@@ -23,8 +23,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api/admin": { target: "https://cryvx.ru", changeOrigin: true },
-      "/covers": { target: "https://cryvx.ru", changeOrigin: true },
+      // CLUBSHELL_API=http://127.0.0.1:5199 — локальный тестовый сервер вместо боевого
+      "/api/admin": { target: process.env.CLUBSHELL_API ?? "https://cryvx.ru", changeOrigin: true },
+      "/covers": { target: process.env.CLUBSHELL_API ?? "https://cryvx.ru", changeOrigin: true },
     },
   },
 });

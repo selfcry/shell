@@ -307,3 +307,15 @@ body.ex-page .backdrop { display: none; }
 .ex-input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #131313; color: var(--text); font: 400 14px var(--font-body); outline: none; margin-bottom: 14px; user-select: text; }
 .ex-input:focus { border-color: var(--orange); }
 .ex-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* панель задач: сеанс и вызов администратора */
+.tb-sess { display: flex; align-items: baseline; gap: 8px; padding: 5px 12px; border-radius: 10px; border: 1px solid rgba(255, 107, 0, 0.5); background: rgba(255, 107, 0, 0.1); white-space: nowrap; }
+.tb-sess[hidden] { display: none; }
+.tb-sess-time { font: 400 16px "Russo One", Inter, sans-serif; color: var(--orange); letter-spacing: 0.03em; }
+.tb-sess-money { font-size: 12px; color: var(--muted); }
+.tb-sess.low { border-color: #f5ff00; animation: tb-blink 1.4s ease-in-out infinite; }
+.tb-sess.low .tb-sess-time { color: #f5ff00; }
+@keyframes tb-blink { 50% { background: rgba(245, 255, 0, 0.16); } }
+.tb-call { padding: 6px 12px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: var(--text); font: 700 12px Inter, sans-serif; cursor: pointer; white-space: nowrap; }
+.tb-call:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+.tb-call:disabled { opacity: 0.6; cursor: default; }

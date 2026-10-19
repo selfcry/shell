@@ -24,13 +24,13 @@ internal sealed class PipeClubApi : IClubApi
     public async Task<LoginResult> LoginAsync(string pcId, string username, string password)
     {
         var r = await CallAsync(new PipeMessage { Op = "login", User = username, Password = password });
-        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
+        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages, r.Bonus, r.Loyalty);
     }
 
     public async Task<LoginResult> RegisterAsync(string pcId, string username, string password, string birth)
     {
         var r = await CallAsync(new PipeMessage { Op = "register", User = username, Password = password, Birth = birth });
-        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages);
+        return new LoginResult(r.Ok, r.Error, r.User, r.Balance, r.Packages, r.Bonus, r.Loyalty);
     }
 
     public async Task<CatalogSnapshot?> GetCatalogAsync() => (await CallAsync(new PipeMessage { Op = "catalog" })).Catalog;
@@ -39,7 +39,15 @@ internal sealed class PipeClubApi : IClubApi
     public async Task<StartResult> StartSessionAsync(string pcId, string username, string packageId)
     {
         var r = await CallAsync(new PipeMessage { Op = "start", User = username, PackageId = packageId });
-        return new StartResult(r.Ok, r.Error, r.Balance, r.Minutes);
+        return new StartResult(r.Ok, r.Error, r.Balance, r.Minutes, r.Bonus);
+    }
+
+    public async Task<bool> CallAdminAsync(string? username) => (await CallAsync(new PipeMessage { Op = "call", User = username })).Ok;
+
+    public async Task<PromoResult> RedeemPromoAsync(string username, string code)
+    {
+        var r = await CallAsync(new PipeMessage { Op = "promo", User = username, Code = code });
+        return new PromoResult(r.Ok, r.Error, r.Bonus);
     }
 
     public async Task StopSessionAsync(string pcId, string username) => await CallAsync(new PipeMessage { Op = "stop", User = username });

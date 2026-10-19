@@ -78,7 +78,7 @@ internal sealed class LockerForm : Form
             _commandLink.Start();
         }
         _session = new SessionManager(_api, _pcName);
-        _session.Tick += (left, balance) => Post(new { type = "tick", remainingSec = left, balance });
+        _session.Tick += (left, balance) => RunOnUi(() => OnTick(left, balance));
         _session.Ended += reason => RunOnUi(() => EndSession(reason));
 
         _guard.Tick += (_, _) => Reassert();
@@ -103,6 +103,7 @@ internal sealed class LockerForm : Form
 
     private void SetMode(bool locked)
     {
+        if (locked) _taskbar?.SetSession(null, 0, 0); // таймер на панели — только в сеансе
         _locked = locked;
         _hook.Enabled = locked && !_test;
         _hook.SwitcherMode = !locked; // в сеансе Alt+Tab открывает наш переключатель
@@ -232,7 +233,11 @@ internal sealed class LockerForm : Form
                 else if (!_locked) EndSession(msg.Text ?? "Сеанс завершён администратором");
                 break;
             case "message":
-                if (!string.IsNullOrWhiteSpace(msg.Text)) Post(new { type = "notice", text = msg.Text });
+                if (!string.IsNullOrWhiteSpace(msg.Text))
+                {
+                    Post(new { type = "notice", text = msg.Text });
+                    if (!_locked) NoticeForm.Show("Сообщение администратора", msg.Text, important: true, seconds: 15); // поверх игры
+                }
                 break;
             case "sync":
                 _session.SyncRemaining(msg.RemainingSec);
@@ -301,6 +306,7 @@ internal sealed class LockerForm : Form
         if (_pinned is not null) _taskbar.SetPinned(_pinned);
         _ = _taskbar.PrepareAsync();
         _taskbar.Reserved += FitToWorkArea;
+        _taskbar.CallAdmin += () => _ = CallAdminAsync(fromTaskbar: true);
         _taskbar.SetVisible(!_locked);
 
         var s = _web.CoreWebView2.Settings;
@@ -355,6 +361,14 @@ internal sealed class LockerForm : Form
                     if (!_session.Active && _pipeApi is not null) _ = _pipeApi.LogoutAsync().ContinueWith(t => t.Exception, TaskContinuationOptions.OnlyOnFaulted);
                     break;
 
+                case "callAdmin":
+                    await CallAdminAsync(fromTaskbar: false);
+                    break;
+
+                case "promo":
+                    await HandlePromoAsync(Str(root, "code"));
+                    break;
+
                 case "openExplorer":
                     if (!_locked) _explorer?.ShowExplorer(); // только в сеансе
                     break;
@@ -404,8 +418,8 @@ internal sealed class LockerForm : Form
         try
         {
             var r = await _api.LoginAsync(_pcName, user, password);
-            if (r.Ok) _session.SetUser(r.User!, r.Balance);
-            Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages });
+            if (r.Ok) { _session.SetUser(r.User!, r.Balance); _bonus = r.Bonus; }
+            Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages, bonus = r.Bonus, loyalty = r.Loyalty });
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -423,8 +437,8 @@ internal sealed class LockerForm : Form
         try
         {
             var r = await _api.RegisterAsync(_pcName, user, password, birth);
-            if (r.Ok) _session.SetUser(r.User!, r.Balance);
-            Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages });
+            if (r.Ok) { _session.SetUser(r.User!, r.Balance); _bonus = r.Bonus; }
+            Post(new { type = "loginResult", ok = r.Ok, error = r.Error, user = r.User, balance = r.Balance, packages = r.Packages, bonus = r.Bonus, loyalty = r.Loyalty });
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -441,12 +455,74 @@ internal sealed class LockerForm : Form
             var r = await _api.StartSessionAsync(_pcName, _session.User, packageId);
             Post(new { type = "startResult", ok = r.Ok, error = r.Error });
             if (!r.Ok) return;
+            _bonus = r.Bonus;
+            Post(new { type = "bonus", bonus = r.Bonus });
+            _warned.Clear();
             _session.Begin(r.Minutes, r.Balance);
             SetMode(locked: false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             Post(new { type = "startResult", ok = false, error = "Нет связи с сервером" });
+        }
+    }
+
+    // ---------- в сеансе: таймер на панели, предупреждения поверх игры, вызов администратора, промокод ----------
+
+    private int _bonus;
+    private readonly HashSet<int> _warned = new();
+    private static readonly int[] WarnAtMinutes = { 10, 5, 1 };
+    private DateTime _lastCall = DateTime.MinValue;
+
+    private void OnTick(int left, int balance)
+    {
+        Post(new { type = "tick", remainingSec = left, balance });
+        _taskbar?.SetSession(_session.Active ? left : null, balance, _bonus);
+        if (!_session.Active) return;
+        foreach (var m in WarnAtMinutes)
+        {
+            // предупреждение поверх игры, один раз на порог (если время добавили — покажется снова при следующем подходе)
+            if (left <= m * 60 && left > m * 60 - 30 && _warned.Add(m))
+                NoticeForm.Show(m == 1 ? "Осталась 1 минута" : $"Осталось {m} минут",
+                    m == 1 ? "Сохраните игру: сеанс сейчас завершится." : "Продлите время на стойке или купите тариф после завершения.", important: m <= 5);
+            if (left > m * 60 + 60) _warned.Remove(m);
+        }
+    }
+
+    private async Task CallAdminAsync(bool fromTaskbar)
+    {
+        if (DateTime.UtcNow - _lastCall < TimeSpan.FromSeconds(30)) { Notify(fromTaskbar, true, "Администратор уже вызван, он скоро подойдёт"); return; }
+        try
+        {
+            var ok = await _api.CallAdminAsync(_session.User);
+            if (ok) _lastCall = DateTime.UtcNow;
+            Notify(fromTaskbar, ok, ok ? "Администратор вызван, он скоро подойдёт" : "Не удалось вызвать администратора");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Notify(fromTaskbar, false, "Нет связи с сервером: подойдите к стойке");
+        }
+    }
+
+    private void Notify(bool fromTaskbar, bool ok, string text)
+    {
+        Post(new { type = "callResult", ok, text });
+        _taskbar?.CallResult(ok);
+        if (!_locked) NoticeForm.Show(ok ? "Вызов администратора" : "Вызов не отправлен", text, important: !ok, seconds: 5);
+    }
+
+    private async Task HandlePromoAsync(string code)
+    {
+        if (_session.User is null) { Post(new { type = "promoResult", ok = false, error = "Сначала войдите" }); return; }
+        try
+        {
+            var r = await _api.RedeemPromoAsync(_session.User, code);
+            if (r.Ok) { _bonus = r.Bonus; _taskbar?.SetSession(_session.Active ? _session.Remaining : null, _session.Balance, _bonus); }
+            Post(new { type = "promoResult", ok = r.Ok, error = r.Error, bonus = r.Bonus });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Post(new { type = "promoResult", ok = false, error = "Нет связи с сервером" });
         }
     }
 

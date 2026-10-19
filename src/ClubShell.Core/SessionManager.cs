@@ -13,6 +13,7 @@ public sealed class SessionManager : IDisposable
     public string? User { get; private set; }
     public int Balance { get; private set; }
     public bool Active => _remainingSec > 0 && User is not null;
+    public int Remaining => _remainingSec;
 
     public event Action<int, int>? Tick;   // осталось секунд, баланс
     public event Action<string>? Ended;    // причина завершения
