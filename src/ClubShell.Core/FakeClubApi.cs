@@ -56,7 +56,7 @@ public sealed class FakeClubApi : IClubApi
     }
 
     public Task StopSessionAsync(string pcId, string username) { ThrowIfOffline(); return Task.CompletedTask; }
-    public Task HeartbeatAsync(string pcId, string? username) { ThrowIfOffline(); return Task.CompletedTask; }
+    public Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username) { ThrowIfOffline(); return Task.FromResult<HeartbeatInfo?>(null); }
 
     private static bool IsNight(DateTime t) => t.Hour >= 22 || t.Hour < 8;
 }

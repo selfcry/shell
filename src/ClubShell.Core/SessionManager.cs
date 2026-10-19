@@ -49,10 +49,19 @@ public sealed class SessionManager : IDisposable
         _remainingSec = 0;
         User = null;
         if (user is null) return;
-        // Блокировка важнее отчёта серверу: если связи нет, всё равно завершаем сессию.
+        // Сначала блокировка, потом отчёт серверу: пока запрос идёт (до 6 с при плохой связи), гость не должен оставаться в сеансе.
+        Ended?.Invoke(reason);
+        StopReport = ReportStopAsync(user);
+        await StopReport;
+    }
+
+    /// <summary>Отчёт серверу о последнем завершении: перезагрузку в конце сеанса ждут, пока он не уйдёт (но недолго).</summary>
+    public Task StopReport { get; private set; } = Task.CompletedTask;
+
+    private async Task ReportStopAsync(string user)
+    {
         try { await _api.StopSessionAsync(PcId, user); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[ClubShell] stop report failed: {ex.Message}"); }
-        Ended?.Invoke(reason);
     }
 
     /// <summary>Сервер уточнил остаток времени (например, админ добавил минуты).</summary>

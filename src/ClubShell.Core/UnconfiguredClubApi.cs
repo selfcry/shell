@@ -13,5 +13,5 @@ public sealed class UnconfiguredClubApi : IClubApi
     public Task<CatalogSnapshot?> GetCatalogAsync() => Task.FromResult<CatalogSnapshot?>(null);
     public Task<StartResult> StartSessionAsync(string pcId, string username, string packageId) => Task.FromResult(new StartResult(false, Message));
     public Task StopSessionAsync(string pcId, string username) => Task.CompletedTask;
-    public Task HeartbeatAsync(string pcId, string? username) => Task.CompletedTask;
+    public Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username) => Task.FromResult<HeartbeatInfo?>(new HeartbeatInfo(false, 0, null)); // сеанса тут быть не может
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace ClubShell.Service;
 
@@ -33,23 +34,61 @@ internal static class SessionLauncher
         uint flags, nint env, string? dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(nint h);
 
-    public static bool IsRunningInActiveSession(string processName)
+    [DllImport("kernel32.dll")] private static extern uint WaitForSingleObject(SafeProcessHandle h, uint ms);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, char[] name, ref int size);
+    [DllImport("wtsapi32.dll", SetLastError = true)] private static extern bool WTSLogoffSession(nint server, uint sessionId, bool wait);
+    private const uint WaitTimeout = 0x102, Synchronize = 0x00100000, ProcessQueryLimitedInformation = 0x1000;
+
+    /// <summary>Сессия, которая сейчас на мониторе (консоль); null — никто не вошёл.</summary>
+    public static uint? ActiveSession()
     {
         var session = WTSGetActiveConsoleSessionId();
-        if (session == NoSession) return true; // никто не вошёл — запускать пока некуда
-        foreach (var p in Process.GetProcessesByName(processName))
-        {
-            using (p) { if ((uint)p.SessionId == session) return true; }
-        }
-        return false;
+        return session == NoSession ? null : session;
     }
 
-    public static bool StartInActiveSession(string exePath, out string? error)
+    /// <summary>В сессии кто-то вошёл (а не экран входа Windows).</summary>
+    public static bool HasUser(uint session)
     {
-        error = null;
-        if (!File.Exists(exePath)) { error = $"file not found: {exePath}"; return false; }
+        if (!WTSQueryUserToken(session, out var token)) return false;
+        CloseHandle(token);
+        return true;
+    }
 
-        var session = WTSGetActiveConsoleSessionId();
+    public static bool IsProcessAlive(SafeProcessHandle h) => WaitForSingleObject(h, 0) == WaitTimeout;
+
+    /// <summary>Открыть процесс для слежения (жив ли) и чтения пути; null — нет доступа или процесс уже завершился.</summary>
+    public static SafeProcessHandle? Open(int pid)
+    {
+        var h = OpenProcess(Synchronize | ProcessQueryLimitedInformation, false, pid);
+        if (h.IsInvalid) { h.Dispose(); return null; }
+        return h;
+    }
+
+    public static string? ImagePath(SafeProcessHandle h)
+    {
+        var buf = new char[1024];
+        var size = buf.Length;
+        return QueryFullProcessImageName(h, 0, buf, ref size) ? new string(buf, 0, size) : null;
+    }
+
+    public static bool SamePath(string? a, string b) =>
+        a is not null && string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Завершить сеанс Windows гостя: закрываются все его процессы (в том числе приостановленное или подменённое окно).</summary>
+    public static bool Logoff(uint session, out string? error)
+    {
+        error = WTSLogoffSession(0, session, false) ? null : Win32("WTSLogoffSession");
+        return error is null;
+    }
+
+    /// <summary>Запуск в активной сессии. Handle процесса остаётся у вызывающего: по нему страж следит именно за своим окном.</summary>
+    public static bool StartInActiveSession(string exePath, out SafeProcessHandle? process, out int pid, out uint session, out string? error)
+    {
+        error = null; process = null; pid = 0;
+        session = WTSGetActiveConsoleSessionId();
+        if (!File.Exists(exePath)) { error = $"file not found: {exePath}"; return false; }
         if (session == NoSession) { error = "no active console session"; return false; }
 
         if (!WTSQueryUserToken(session, out var userToken)) { error = Win32("WTSQueryUserToken"); return false; }
@@ -64,7 +103,9 @@ internal static class SessionLauncher
             var ok = CreateProcessAsUser(primary, null, $"\"{exePath}\"", 0, 0, false,
                 CreateUnicodeEnvironment | CreateNoWindow, env, Path.GetDirectoryName(exePath), ref si, out var pi);
             if (!ok) { error = Win32("CreateProcessAsUser"); return false; }
-            CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+            CloseHandle(pi.hThread);
+            process = new SafeProcessHandle(pi.hProcess, ownsHandle: true);
+            pid = pi.dwProcessId;
             return true;
         }
         finally

@@ -1,3 +1,5 @@
+using ClubShell.Core;
+
 namespace ClubShell.Locker;
 
 internal static class Program
@@ -21,13 +23,34 @@ internal static class Program
         Application.ThreadException += (_, e) => CrashLog.Write(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => CrashLog.Write(e.ExceptionObject as Exception);
 
-        // Одно окно блокировки на сессию Windows.
-        using var mutex = new Mutex(true, @"Local\ClubShell.Locker", out var isFirst);
-        if (!isFirst) return;
+        // Одно окно блокировки. На боевом ПК мьютекс в Global\ создаёт служба (SYSTEM) с ограниченными правами:
+        // гость не может ни создать это имя заранее, ни запретить к нему доступ (обычный Local\ он мог занять своим процессом).
+        using var mutex = AcquireSingleInstance();
+        if (mutex is null) return;
 
         SystemTaskbar.RestoreLeftover(); // если прошлый запуск закрыли силой, возвращаем панель Windows
         AppDomain.CurrentDomain.ProcessExit += (_, _) => SystemTaskbar.Restore(); // вернуть панель Windows при любом выходе
         ApplicationConfiguration.Initialize();
         Application.Run(new LockerForm());
+    }
+
+    private static Mutex? AcquireSingleInstance()
+    {
+        Mutex? mutex;
+        try { if (!Mutex.TryOpenExisting(PipeNames.LockerMutex, out mutex)) mutex = null; }
+        catch (UnauthorizedAccessException) { mutex = null; }
+        if (mutex is null)
+        {
+            // Службы нет (тестовый запуск) или она ещё не стартовала — обычный мьютекс сессии.
+            mutex = new Mutex(false, @"Local\ClubShell.Locker");
+        }
+        try
+        {
+            // Прошлое окно могло только что завершаться (перезапуск стражем) — ждём его немного.
+            if (mutex.WaitOne(TimeSpan.FromSeconds(5))) return mutex;
+        }
+        catch (AbandonedMutexException) { return mutex; } // прошлое окно убито: мьютекс теперь наш
+        mutex.Dispose();
+        return null;
     }
 }

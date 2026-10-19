@@ -5,6 +5,7 @@ namespace ClubShell.Service;
 /// <summary>
 /// Раз в 5 секунд отправляет серверу пульс этого ПК. Если сервер не отвечает дольше OfflineGraceSec,
 /// выставляет LinkState.Offline — ControlPipeServer передаст это окну блокировки, и оно закроет сессию.
+/// Ответ сервера (идёт ли на ПК оплаченный сеанс) запоминает для SessionEnforcer.
 /// </summary>
 public sealed class HeartbeatWorker : BackgroundService
 {
@@ -25,7 +26,12 @@ public sealed class HeartbeatWorker : BackgroundService
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(stop);
                 cts.CancelAfter(TimeSpan.FromSeconds(4)); // зависший запрос не должен останавливать проверку
-                await _api.HeartbeatAsync(_config.PcName, _link.User).WaitAsync(cts.Token);
+                var info = await _api.HeartbeatAsync(_config.PcName, _link.User).WaitAsync(cts.Token);
+                if (info is not null)
+                {
+                    if (_link.ServerSessionActive == true && !info.SessionActive) _log.LogInformation("Server reports no active session on this PC");
+                    _link.SetServerSession(info.SessionActive);
+                }
 
                 _link.LastOkUtc = DateTime.UtcNow;
                 if (_link.Offline) _log.LogInformation("Server link restored");

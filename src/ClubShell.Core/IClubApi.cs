@@ -15,6 +15,9 @@ public interface IClubApi
     Task<StartResult> StartSessionAsync(string pcId, string username, string packageId);
     Task StopSessionAsync(string pcId, string username);
 
-    /// <summary>Пульс активности ПК (раз в 5 с): если сервер долго его не получает, ПК считается потерянным.</summary>
-    Task HeartbeatAsync(string pcId, string? username);
+    /// <summary>
+    /// Пульс активности ПК (раз в 5 с): если сервер долго его не получает, ПК считается потерянным.
+    /// Ответ — есть ли на этом ПК оплаченный сеанс по данным сервера; null — сервер этого не сообщает (заглушки).
+    /// </summary>
+    Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username);
 }

@@ -59,8 +59,14 @@ public sealed class HttpClubApi : IClubApi, IDisposable
     public async Task StopSessionAsync(string pcId, string username) =>
         await PostAsync<JsonElement>("api/pc/session/stop", new { username });
 
-    public async Task HeartbeatAsync(string pcId, string? username) =>
-        await PostAsync<JsonElement>("api/pc/heartbeat", new { username });
+    private sealed record HeartbeatSessionDto(string? User, int RemainingSec);
+    private sealed record HeartbeatDto(bool Ok, HeartbeatSessionDto? Session);
+
+    public async Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username)
+    {
+        var r = await PostAsync<HeartbeatDto>("api/pc/heartbeat", new { username });
+        return r.Session is { } s ? new HeartbeatInfo(s.RemainingSec > 0, s.RemainingSec, s.User) : new HeartbeatInfo(false, 0, null);
+    }
 
     public void Dispose() => _http.Dispose();
 }

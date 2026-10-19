@@ -15,9 +15,10 @@ public sealed class ServerLinkWorker : BackgroundService
 {
     private readonly ShellConfig _config;
     private readonly CommandBus _bus;
+    private readonly LinkState _link;
     private readonly ILogger<ServerLinkWorker> _log;
 
-    public ServerLinkWorker(ShellConfig config, CommandBus bus, ILogger<ServerLinkWorker> log) => (_config, _bus, _log) = (config, bus, log);
+    public ServerLinkWorker(ShellConfig config, CommandBus bus, LinkState link, ILogger<ServerLinkWorker> log) => (_config, _bus, _link, _log) = (config, bus, link, log);
 
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
@@ -78,7 +79,11 @@ public sealed class ServerLinkWorker : BackgroundService
         {
             case "reboot": Shutdown("/r"); break;
             case "shutdown": Shutdown("/s"); break;
-            case "endSession" or "lock" or "message" or "sync":
+            case "endSession" or "lock":
+                _link.SetServerSession(false); // контроль сеанса не ждёт следующего пульса
+                _bus.Publish(new PipeMessage { Type = "command", Name = name, Text = text, RemainingSec = sec });
+                break;
+            case "message" or "sync":
                 _bus.Publish(new PipeMessage { Type = "command", Name = name, Text = text, RemainingSec = sec });
                 break;
             case "balance":

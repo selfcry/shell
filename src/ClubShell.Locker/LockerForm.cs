@@ -43,6 +43,7 @@ internal sealed class LockerForm : Form
     private SwitcherForm? _switcher;
     private ExplorerForm? _explorer;
     private ServerCommandLink? _commandLink; // только в тестовом режиме с настоящим сервером
+    private PipeClubApi? _pipeApi;           // боевой режим: к серверу ходит служба, у окна токена ПК нет
     private Dictionary<string, ResolvedEntry> _catalog = new();
 
     private string? _serverUrl;
@@ -70,7 +71,7 @@ internal sealed class LockerForm : Form
         if (_test && DevFlags.Get("CLUBSHELL_SERVER_URL") is { Length: > 0 } testUrl
                   && DevFlags.Get("CLUBSHELL_PC_TOKEN") is { Length: > 0 } testToken)
         {
-            _serverUrl = testUrl;
+            _serverUrl = testUrl.TrimEnd('/');
             _api.Inner = new HttpClubApi(testUrl, testToken);
             NetworkTest.Configure(testUrl, testToken);
             _commandLink = new ServerCommandLink(testUrl, testToken, m => RunOnUi(() => OnServerCommand(m)));
@@ -88,6 +89,7 @@ internal sealed class LockerForm : Form
         _hook.AltReleased += () => RunOnUi(() => { _switcher?.Commit(); _hook.SwitcherOpen = false; });
         _hook.EscPressed += () => RunOnUi(() => { _switcher?.Cancel(); _hook.SwitcherOpen = false; });
         _service.MessageReceived += msg => RunOnUi(() => OnServiceMessage(msg));
+        _service.Connected += () => RunOnUi(() => _ = SendStatusAsync()); // служба сразу узнаёт, что окно на месте и в каком режиме
 
         SetMode(locked: true);
         Load += async (_, _) => await InitWebAsync();
@@ -138,13 +140,17 @@ internal sealed class LockerForm : Form
         Post(new { type = "sessionEnded", reason });
         Post(new { type = "rebooting", test = _test });
         SetMode(locked: true);
+        _ = SendStatusAsync(); // служба сразу видит, что ПК заблокирован
         if (_test) return;
-        // Небольшая пауза, чтобы гость увидел экран «Перезагрузка».
+        // Всё, что гость запустил в сеансе (игры, браузер, свои программы), закрываем сразу, не дожидаясь перезагрузки.
+        _ = Task.Run(GuestProcesses.KillAll);
+        // Небольшая пауза, чтобы гость увидел экран «Перезагрузка», и отчёт серверу о конце сеанса успел уйти.
         var delay = new System.Windows.Forms.Timer { Interval = 2500 };
-        delay.Tick += (_, _) =>
+        delay.Tick += async (_, _) =>
         {
             delay.Stop();
             delay.Dispose();
+            await Task.WhenAny(_session.StopReport, Task.Delay(5000));
             try { Process.Start(new ProcessStartInfo("shutdown", "/r /t 0 /f") { CreateNoWindow = true, UseShellExecute = false }); }
             catch (Exception ex) { Debug.WriteLine($"[ClubShell] reboot failed: {ex.Message}"); }
         };
@@ -186,12 +192,15 @@ internal sealed class LockerForm : Form
                 _zone = msg.Zone ?? _zone;
                 _requireService = msg.RequireService && !_devMode && !_test;
                 _session.PcId = _pcName;
-                if (!string.IsNullOrWhiteSpace(msg.ServerUrl) && !string.IsNullOrWhiteSpace(msg.PcToken) && _serverUrl != msg.ServerUrl)
+                if (_commandLink is null) // не тестовый запуск с прямым доступом к серверу
                 {
-                    _serverUrl = msg.ServerUrl;
-                    (_api.Inner as IDisposable)?.Dispose();
-                    _api.Inner = new HttpClubApi(msg.ServerUrl, msg.PcToken); // дальше вход и тарифы идут на настоящий сервер
-                    NetworkTest.Configure(msg.ServerUrl, msg.PcToken);
+                    _serverUrl = string.IsNullOrWhiteSpace(msg.ServerUrl) ? null : msg.ServerUrl.TrimEnd('/');
+                    // Вход, тарифы, каталог и тест скорости — запросами к службе: токен ПК окну (и гостю) недоступен.
+                    var first = _pipeApi is null;
+                    _pipeApi ??= new PipeClubApi(_service);
+                    _api.Inner = _pipeApi;
+                    NetworkTest.UseService(_serverUrl, _pipeApi.SpeedTestAsync);
+                    if (first) LoadCatalog(); // интерфейс мог успеть загрузить каталог из файла, пока службы ещё не было
                 }
                 PostConfig();
                 break;
@@ -270,7 +279,7 @@ internal sealed class LockerForm : Form
     }
 
     private async Task SendStatusAsync() =>
-        await _service.SendAsync(new PipeMessage { Type = "status", User = _session.User, SessionActive = _session.Active, RemainingSec = 0 });
+        await _service.SendAsync(new PipeMessage { Type = "status", Locked = _locked, SessionActive = _session.Active });
 
     // ---------- WebView2 ----------
 
@@ -343,6 +352,7 @@ internal sealed class LockerForm : Form
 
                 case "logout":
                     _session.Logout();
+                    if (!_session.Active && _pipeApi is not null) _ = _pipeApi.LogoutAsync().ContinueWith(t => t.Exception, TaskContinuationOptions.OnlyOnFaulted);
                     break;
 
                 case "openExplorer":
@@ -475,7 +485,7 @@ internal sealed class LockerForm : Form
                 {
                     if (!force && snap.Version == _catalogVersion) return;
                     version = snap.Version;
-                    var baseUrl = (_api.Inner as HttpClubApi)?.BaseUrl ?? "";
+                    var baseUrl = _serverUrl ?? "";
                     entries = snap.Items.Select(i => new CatalogEntry
                     {
                         Id = i.Id, Title = i.Title, Kind = i.Kind, Group = i.Group, ClubAccount = i.ClubAccount, MinAge = i.MinAge, Pinned = i.Pinned,

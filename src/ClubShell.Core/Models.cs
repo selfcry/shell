@@ -12,4 +12,7 @@ public record ServerCatalogItem(string Id, string Title, string Kind, string? Gr
 
 public record CatalogSnapshot(long Version, List<ServerCatalogItem> Items, List<string> Blocked);
 
+/// <summary>Что сервер знает о сеансе на этом ПК (ответ на пульс).</summary>
+public record HeartbeatInfo(bool SessionActive, int RemainingSec, string? User);
+
 public record StartResult(bool Ok, string? Error = null, int Balance = 0, int Minutes = 0);

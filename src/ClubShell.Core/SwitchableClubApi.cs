@@ -12,5 +12,5 @@ public sealed class SwitchableClubApi : IClubApi
     public Task<CatalogSnapshot?> GetCatalogAsync() => _inner.GetCatalogAsync();
     public Task<StartResult> StartSessionAsync(string pcId, string u, string pkg) => _inner.StartSessionAsync(pcId, u, pkg);
     public Task StopSessionAsync(string pcId, string u) => _inner.StopSessionAsync(pcId, u);
-    public Task HeartbeatAsync(string pcId, string? u) => _inner.HeartbeatAsync(pcId, u);
+    public Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? u) => _inner.HeartbeatAsync(pcId, u);
 }
