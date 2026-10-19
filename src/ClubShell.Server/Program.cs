@@ -33,6 +33,7 @@ var adminKey = File.ReadAllText(keyFile).Trim();
 var club = new ClubService(db, tz);
 club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", false)); // демо-гости только по явному Club__SeedDemo=true
 
+var operators = new Operators(db);
 var catalog = new CatalogService(db, dataDir);
 builder.Services.AddSingleton(catalog);
 builder.Services.AddSingleton(db);
@@ -55,14 +56,18 @@ Pc? AuthPc(HttpContext ctx)
     return string.IsNullOrEmpty(token) ? null : club.PcByToken(token);
 }
 
-bool IsAdmin(HttpContext ctx)
+// Владелец — ключ из admin-key.txt; сотрудник — токен, выданный при входе по логину и паролю.
+Actor? ActorOf(HttpContext ctx)
 {
     var key = ctx.Request.Headers["X-Admin-Key"].FirstOrDefault();
-    return !string.IsNullOrEmpty(key) && Security.FixedEquals(key, adminKey);
+    if (string.IsNullOrEmpty(key)) return null;
+    if (Security.FixedEquals(key, adminKey)) return new Actor("Владелец", "owner", null);
+    return operators.ByToken(key);
 }
+string ClientIp(HttpContext ctx) => ctx.Request.Headers["X-Real-IP"].FirstOrDefault() ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "?";
 
 IResult Unauthorized(string what) => Results.Json(new { ok = false, error = what }, statusCode: 401);
-object Pkg(Tariff t) => new { id = t.Id, name = t.Name, minutes = t.Minutes, price = t.Price, nightOnly = t.NightOnly };
+object Pkg(Tariff t) => new { id = t.Id, name = t.Name, minutes = t.Minutes, price = t.Price, nightOnly = t.NightOnly, fromHour = t.Window?.from, toHour = t.Window?.to };
 
 var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0";
 app.MapGet("/health", () =>
@@ -77,8 +82,9 @@ void Audit(HttpContext ctx, string action, string? details = null)
     try
     {
         using var c = db.Open();
+        var who = ctx.Items["actor"] is Actor a ? a.Name : null;
         Db.Exec(c, "INSERT INTO audit(ts, ip, action, details) VALUES($t, $ip, $a, $d)",
-            ("$t", Db.Now()), ("$ip", ctx.Request.Headers["X-Real-IP"].FirstOrDefault() ?? ctx.Connection.RemoteIpAddress?.ToString()), ("$a", action), ("$d", details));
+            ("$t", Db.Now()), ("$ip", ClientIp(ctx)), ("$a", who is null ? action : $"{who}: {action}"), ("$d", details));
     }
     catch (Exception) { /* журнал не должен ломать операцию */ }
 }
@@ -209,6 +215,20 @@ pc.MapPost("/promo", (HttpContext ctx, PromoReq req) =>
     return Results.Ok(new { ok = r.Ok, error = r.Error, bonus });
 });
 
+// Бар: меню и заказ с ПК (оплата с баланса гостя, выдаёт администратор).
+pc.MapGet("/shop", (HttpContext ctx) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    return Results.Ok(club.Products(onlyActive: true).Where(x => x.Stock > 0).Select(x => new { id = x.Id, name = x.Name, category = x.Category, price = x.Price, stock = x.Stock }));
+});
+pc.MapPost("/order", (HttpContext ctx, PcOrderReq req, Telegram tg) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    var (r, order) = club.Sell((req.Items ?? new()).Select(i => (i.ProductId, i.Qty)).ToList(), "balance", req.Username, p);
+    if (r.Ok) tg.Notify($"🍔 {p.Name}: заказ #{order!.Id} на {order.Total} ₽ — {string.Join(", ", order.Lines.Select(l => $"{l.Name} ×{l.Qty}"))}");
+    return Results.Ok(new { ok = r.Ok, error = r.Error, orderId = order?.Id, total = order?.Total, balance = r.Ok ? club.BalanceOfLogin(req.Username) : (int?)null });
+});
+
 pc.MapPost("/heartbeat", (HttpContext ctx, HeartbeatReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
@@ -229,11 +249,24 @@ app.Map("/ws/pc", async (HttpContext ctx, PcHub hub) =>
 });
 
 // ======================= админ =======================
+// Вход сотрудника (до проверки ключа: у него ещё нет токена).
+app.MapPost("/api/admin/login", async (OperatorLoginReq req, HttpContext ctx) =>
+{
+    var (token, actor, error) = await operators.LoginAsync(req.Login, req.Password, ClientIp(ctx));
+    if (token is null) return Results.Json(new { ok = false, error }, statusCode: 401);
+    ctx.Items["actor"] = actor;
+    Audit(ctx, "Вход в админку");
+    return Results.Ok(new { ok = true, token, name = actor!.Name, role = actor.Role });
+});
+
 var admin = app.MapGroup("/api/admin");
 admin.AddEndpointFilter(async (ctx, next) =>
 {
     var http = ctx.HttpContext;
-    if (!IsAdmin(http)) return Unauthorized("Нужен ключ администратора");
+    var actor = ActorOf(http);
+    if (actor is null) return Unauthorized("Нужен ключ администратора или вход сотрудника");
+    if (!actor.IsOwner && Operators.OwnerOnly(http.Request.Method, http.Request.Path)) return Results.Json(new { ok = false, error = "Доступно только владельцу" }, statusCode: 403);
+    http.Items["actor"] = actor;
     var result = await next(ctx);
     if (!HttpMethods.IsGet(http.Request.Method) && !http.Items.ContainsKey("audited")) Audit(http, $"{http.Request.Method} {http.Request.Path}"); // кто и когда что менял
     return result;
@@ -245,6 +278,23 @@ admin.MapGet("/audit", () =>
         r => new { id = r.GetInt64(0), ts = r.GetInt64(1), ip = r.IsDBNull(2) ? null : r.GetString(2), action = r.GetString(3), details = r.IsDBNull(4) ? null : r.GetString(4) }));
 });
 admin.MapGet("/version", () => Results.Ok(new { version }));
+admin.MapGet("/me", (HttpContext ctx) => ctx.Items["actor"] is Actor a ? Results.Ok(new { name = a.Name, role = a.Role }) : Results.Unauthorized());
+admin.MapPost("/logout", (HttpContext ctx) =>
+{
+    if (ctx.Request.Headers["X-Admin-Key"].FirstOrDefault() is { } t) operators.Logout(t);
+    return Results.Ok(new { ok = true });
+});
+admin.MapGet("/operators", () => Results.Ok(operators.List()));
+admin.MapPost("/operators", (OperatorReq req) =>
+{
+    var r = operators.Create(req.Login, req.Name ?? "", req.Password, req.Role);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapPut("/operators/{id:long}", (long id, OperatorUpdateReq req) =>
+{
+    var r = operators.Update(id, req.Password, req.Active, req.Role, req.Name);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
 
 // ---- каталог игр и приложений ----
 object AppDto(AppEntry a) => new
@@ -415,6 +465,39 @@ admin.MapPost("/shift/close", (ShiftCloseReq req, Telegram tg) =>
 });
 admin.MapGet("/shifts", () => Results.Ok(club.Shifts()));
 admin.MapGet("/shifts/{id:long}", (long id) => club.ShiftReportOf(id) is { } r ? Results.Ok(r) : Results.NotFound(new { ok = false }));
+
+// ---- бар и склад ----
+admin.MapGet("/products", () => Results.Ok(club.Products(onlyActive: false)));
+admin.MapPut("/products", (ProductReq req) =>
+{
+    var r = club.UpsertProduct(req.Id, req.Name, req.Category, req.Price, req.Stock, req.Active ?? true, req.Sort ?? 0);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapPost("/products/{id:long}/stock", (long id, StockReq req) =>
+{
+    var r = club.AddStock(id, req.Qty);
+    return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
+});
+admin.MapPost("/sales", async (SaleReq req, PcHub hub) =>
+{
+    var (r, order) = club.Sell((req.Items ?? new()).Select(i => (i.ProductId, i.Qty)).ToList(), req.Method, req.Login, null);
+    if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
+    // продажа с баланса гостя, который сидит за ПК: присылаем новый баланс
+    if (req.Method == "balance" && order!.GuestId is { } gid && club.BalanceTarget(gid) is { } t)
+        await hub.SendAsync(t.pcId, new { type = "command", name = "balance", user = t.login, balance = t.balance });
+    return Results.Ok(new { ok = true, order });
+});
+admin.MapGet("/orders", (bool? all) => Results.Ok(club.Orders(pendingOnly: all != true)));
+admin.MapPost("/orders/{id:long}/done", (long id) => club.FinishOrder(id, cancel: false) is { Ok: true } ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = "Заказ не найден или уже закрыт" }));
+admin.MapPost("/orders/{id:long}/cancel", async (long id, PcHub hub) =>
+{
+    var o = club.Orders(pendingOnly: true).FirstOrDefault(x => x.Id == id);
+    var r = club.FinishOrder(id, cancel: true);
+    if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
+    if (o?.GuestId is { } gid && club.BalanceTarget(gid) is { } t)
+        await hub.SendAsync(t.pcId, new { type = "command", name = "balance", user = t.login, balance = t.balance });
+    return Results.Ok(new { ok = true });
+});
 
 // ---- аналитика ----
 admin.MapGet("/analytics", (int? days) => Results.Ok(club.Analytics(days ?? 7)));

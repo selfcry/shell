@@ -134,6 +134,21 @@ export class MockHost {
           loyalty: { bonus: 120, spent: 2600, level: "Бронза", cashbackPct: 3, nextLevel: "Серебро", toNext: 2400 } });
         break;
       }
+      case "shopOpen":
+        window.setTimeout(() => this.emit({ type: "shop", items: [
+          { id: 1, name: "Кола 0.5", category: "Напитки", price: 120, stock: 12 },
+          { id: 2, name: "Энергетик Burn", category: "Напитки", price: 150, stock: 6 },
+          { id: 3, name: "Чипсы Lay's", category: "Снеки", price: 140, stock: 9 },
+          { id: 4, name: "Сникерс", category: "Снеки", price: 90, stock: 20 },
+        ] }), 200);
+        break;
+      case "order": {
+        const total = msg.items.reduce((s, i) => s + i.qty * ({ 1: 120, 2: 150, 3: 140, 4: 90 } as Record<number, number>)[i.productId]!, 0);
+        if (total > this.balance) { this.emit({ type: "orderResult", ok: false, error: "Недостаточно средств" }); break; }
+        this.balance -= total;
+        window.setTimeout(() => { this.emit({ type: "balance", balance: this.balance }); this.emit({ type: "orderResult", ok: true, orderId: 7, total }); }, 300);
+        break;
+      }
       case "callAdmin":
         window.setTimeout(() => this.emit({ type: "callResult", ok: true, text: "Администратор вызван, он скоро подойдёт" }), 300);
         break;

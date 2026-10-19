@@ -215,6 +215,17 @@ public sealed class ControlPipeServer : BackgroundService
                     (resp.Ok, resp.Error, resp.Bonus) = (r.Ok, r.Error, r.Bonus);
                     break;
                 }
+                case "shop":
+                    resp.Shop = await _api.GetShopAsync();
+                    resp.Ok = true;
+                    break;
+                case "order":
+                {
+                    if (_link.User is not { } user) { resp.Error = "Сначала войдите"; break; }
+                    var r = await _api.OrderAsync(user, (req.Items ?? new()).Take(20).ToList());
+                    (resp.Ok, resp.Error, resp.OrderId, resp.Total, resp.Balance) = (r.Ok, r.Error, r.OrderId, r.Total, r.Balance ?? 0);
+                    break;
+                }
                 case "catalog":
                     resp.Catalog = await _api.GetCatalogAsync();
                     resp.Ok = true;

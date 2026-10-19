@@ -26,4 +26,10 @@ public interface IClubApi
 
     /// <summary>Ввести промокод (бонусы начисляет сервер, один раз на гостя).</summary>
     Task<PromoResult> RedeemPromoAsync(string username, string code) => Task.FromResult(new PromoResult(false, "Промокоды недоступны"));
+
+    /// <summary>Меню бара (товары в наличии).</summary>
+    Task<List<ShopItem>> GetShopAsync() => Task.FromResult(new List<ShopItem>());
+
+    /// <summary>Заказ в бар с баланса гостя: выдаёт администратор.</summary>
+    Task<OrderResult> OrderAsync(string username, List<OrderItem> items) => Task.FromResult(new OrderResult(false, "Бар недоступен"));
 }

@@ -369,6 +369,14 @@ internal sealed class LockerForm : Form
                     await HandlePromoAsync(Str(root, "code"));
                     break;
 
+                case "shopOpen":
+                    await HandleShopAsync();
+                    break;
+
+                case "order":
+                    await HandleOrderAsync(root);
+                    break;
+
                 case "openExplorer":
                     if (!_locked) _explorer?.ShowExplorer(); // только в сеансе
                     break;
@@ -523,6 +531,32 @@ internal sealed class LockerForm : Form
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             Post(new { type = "promoResult", ok = false, error = "Нет связи с сервером" });
+        }
+    }
+
+    private async Task HandleShopAsync()
+    {
+        try { Post(new { type = "shop", items = await _api.GetShopAsync() }); }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { Post(new { type = "shop", items = Array.Empty<object>(), error = "Нет связи с сервером" }); }
+    }
+
+    private async Task HandleOrderAsync(JsonElement root)
+    {
+        if (_session.User is null) { Post(new { type = "orderResult", ok = false, error = "Сначала войдите" }); return; }
+        var items = new List<OrderItem>();
+        if (root.TryGetProperty("items", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var i in arr.EnumerateArray().Take(20))
+                if (i.TryGetProperty("productId", out var pid) && pid.TryGetInt64(out var id) && i.TryGetProperty("qty", out var q) && q.TryGetInt32(out var qty))
+                    items.Add(new OrderItem(id, qty));
+        try
+        {
+            var r = await _api.OrderAsync(_session.User, items);
+            if (r.Ok && r.Balance is { } b) { _session.SetBalance(b); Post(new { type = "balance", balance = b }); }
+            Post(new { type = "orderResult", ok = r.Ok, error = r.Error, orderId = r.OrderId, total = r.Total });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Post(new { type = "orderResult", ok = false, error = "Нет связи с сервером" });
         }
     }
 

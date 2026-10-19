@@ -58,7 +58,8 @@ public sealed partial class ClubService
     }
 
     public sealed record ShiftReport(ShiftInfo Shift, int TopupCash, int TopupCard, int TopupSbp, int TopupOther, int Charges, int ChargesCash,
-        int SessionRevenue, int Sessions, int BonusSpent, int NewGuests, int CashExpected, int? CashDiff);
+        int SessionRevenue, int Sessions, int BonusSpent, int NewGuests, int CashExpected, int? CashDiff,
+        int BarCash, int BarCard, int BarSbp, int BarBalance);
 
     public ShiftReport? ShiftReportOf(long shiftId)
     {
@@ -78,9 +79,10 @@ public sealed partial class ClubService
         var sessions = (int)Db.Scalar<long>(c, "SELECT COUNT(*) FROM sessions WHERE started >= $a AND started <= $b", ("$a", sh.Opened), ("$b", to));
         var bonusSpent = -(int)(Db.Scalar<long?>(c, "SELECT SUM(amount) FROM tx WHERE kind = 'bonus_spent' AND ts >= $a AND ts <= $b", ("$a", sh.Opened), ("$b", to)) ?? 0);
         var newGuests = (int)Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests WHERE created >= $a AND created <= $b", ("$a", sh.Opened), ("$b", to));
-        var expected = sh.CashOpen + topCash - chargesCash;
+        var bar = ShopTotals(shiftId);
+        var expected = sh.CashOpen + topCash - chargesCash + bar.cash;
         return new ShiftReport(sh, topCash, topCard, topSbp, topOther, charges, chargesCash, revenue, sessions, bonusSpent, newGuests, expected,
-            sh.CashClose is { } counted ? counted - expected : null);
+            sh.CashClose is { } counted ? counted - expected : null, bar.cash, bar.card, bar.sbp, bar.balance);
     }
 
     public List<ShiftInfo> Shifts(int limit = 60)
@@ -98,6 +100,7 @@ public sealed partial class ClubService
             {T(r.Shift.Opened)} — {(r.Shift.Closed is { } cl ? T(cl) : "сейчас")}
             Пополнения: наличные {r.TopupCash} ₽, карта {r.TopupCard} ₽, СБП {r.TopupSbp} ₽{(r.TopupOther > 0 ? $", прочее {r.TopupOther} ₽" : "")}
             Списания: {r.Charges} ₽
+            Бар: наличные {r.BarCash} ₽, карта {r.BarCard} ₽, СБП {r.BarSbp} ₽, с баланса {r.BarBalance} ₽
             Выручка за время: {r.SessionRevenue} ₽ ({r.Sessions} сеансов), бонусами оплачено {r.BonusSpent} ₽
             Новых гостей: {r.NewGuests}
             Наличные: ожидалось {r.CashExpected} ₽, посчитано {(r.Shift.CashClose?.ToString() ?? "—")} ₽{diff}

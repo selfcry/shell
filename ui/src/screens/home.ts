@@ -1,6 +1,6 @@
-import { el, formatTime, isNight } from "../dom";
+import { el, formatTime, inWindow, tariffWindow, windowText } from "../dom";
 import { icons } from "../icons";
-import type { LoyaltyInfo, CatalogItem, TariffPackage } from "../protocol";
+import type { LoyaltyInfo, CatalogItem, ShopItem, TariffPackage } from "../protocol";
 
 // Главный экран гостя. Показывается сразу после входа: игры и приложения, профиль, баланс и время сеанса.
 // Время покупается здесь же (окно «Тарифы»), а не отдельным экраном перед играми.
@@ -13,6 +13,8 @@ export interface HomeHandlers {
   onOpenExplorer(): void;
   onCallAdmin(): void;
   onPromo(code: string): void;
+  onShopOpen(): void;
+  onOrder(items: { productId: number; qty: number }[]): void;
 }
 
 export interface HomeScreen {
@@ -24,6 +26,8 @@ export interface HomeScreen {
   setBonus(bonus: number, loyalty?: LoyaltyInfo | null): void;
   promoResult(ok: boolean, error?: string): void;
   callResult(ok: boolean, text?: string): void;
+  setShop(items: ShopItem[], error?: string): void;
+  orderResult(ok: boolean, error?: string, total?: number): void;
   setSession(active: boolean): void;
   tick(remainingSec: number, balance: number): void;
   setCatalog(items: CatalogItem[]): void;
@@ -72,6 +76,7 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   let query = "";
   let user = "";
   let balance = 0;
+  let bonus = 0;
   let packages: TariffPackage[] = [];
   let sessionActive = false;
   let buying = false; // запрос на покупку тарифа уже ушёл
@@ -85,10 +90,11 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   const navApps = el("button", { class: "hm-nav", attrs: { title: "Приложения" }, html: icons.grid });
   const navTime = el("button", { class: "hm-nav", attrs: { title: "Время и тарифы" }, html: icons.clock });
   const navFiles = el("button", { class: "hm-nav", attrs: { title: "Мои файлы" }, html: icons.folder });
+  const navBar = el("button", { class: "hm-nav", attrs: { title: "Бар: заказать на место" }, html: icons.cup });
   const navExit = el("button", { class: "hm-nav exit", attrs: { title: "Выйти" }, html: icons.power });
   const rail = el("aside", { class: "hm-rail" }, [
     el("div", { class: "hm-logo", html: icons.club }),
-    el("div", { class: "hm-navs" }, [navGames, navApps, navTime, navFiles]),
+    el("div", { class: "hm-navs" }, [navGames, navApps, navTime, navFiles, navBar]),
     navExit,
   ]);
 
@@ -159,12 +165,54 @@ export function buildHome(h: HomeHandlers): HomeScreen {
 
   const root = el("div", { class: "screen hm" }, [rail, main, side, toastEl, modal]);
 
+  // ---------- бар: меню и заказ на место ----------
+  let shop: ShopItem[] = [];
+  const order = new Map<number, number>();
+  let shopError = "";
+
+  function openBar(): void {
+    const close = el("button", { class: "hm-x", html: icons.close, attrs: { title: "Закрыть" } });
+    close.addEventListener("click", closeModal);
+    const total = [...order].reduce((s, [id, q]) => s + (shop.find((x) => x.id === id)?.price ?? 0) * q, 0);
+    const cats = [...new Set(shop.map((x) => x.category ?? "Прочее"))];
+    const send = el("button", { class: "hm-wide hm-primary", text: total ? `Заказать за ${total} ₽` : "Выберите товары" });
+    if (!total || total > balance) send.setAttribute("disabled", "");
+    send.addEventListener("click", () => {
+      send.setAttribute("disabled", "");
+      h.onOrder([...order].map(([productId, qty]) => ({ productId, qty })));
+    });
+    modalBody.replaceChildren(
+      el("div", { class: "hm-modal-head" }, [el("div", {}, [el("div", { class: "hm-modal-title", text: "Бар" }), el("div", { class: "hm-muted", text: `Оплата с баланса · на балансе ${balance} ₽. Администратор принесёт заказ к вашему месту.` })]), close]),
+      shop.length === 0
+        ? el("div", { class: "hm-hint", text: shopError || "Меню пока пустое" })
+        : el("div", { class: "hm-shop" }, cats.map((c) => el("div", {}, [
+            el("div", { class: "hm-shop-cat", text: c }),
+            el("div", { class: "hm-shop-items" }, shop.filter((x) => (x.category ?? "Прочее") === c).map((x) => {
+              const q = order.get(x.id) ?? 0;
+              const minus = el("button", { class: "hm-qty", text: "−" });
+              const plus = el("button", { class: "hm-qty", text: "+" });
+              minus.addEventListener("click", () => { q > 1 ? order.set(x.id, q - 1) : order.delete(x.id); openBar(); });
+              plus.addEventListener("click", () => { if (q < Math.min(x.stock, 10)) order.set(x.id, q + 1); openBar(); });
+              return el("div", { class: "hm-shop-item" + (q ? " on" : "") }, [
+                el("div", {}, [el("div", { class: "hm-shop-name", text: x.name }), el("div", { class: "hm-muted", text: `${x.price} ₽` })]),
+                el("div", { class: "hm-qtys" }, [minus, el("b", { text: String(q) }), plus]),
+              ]);
+            })),
+          ]))),
+      total > balance ? el("div", { class: "hm-hint", text: "Не хватает средств: пополните баланс на стойке" }) : el("span"),
+      send,
+    );
+    modal.hidden = false;
+  }
+
   function openTariffs(): void {
     const close = el("button", { class: "hm-x", html: icons.close, attrs: { title: "Закрыть" } });
     close.addEventListener("click", closeModal);
     const cards = packages.map((p) => {
-      const locked = sessionActive || (p.nightOnly && !isNight()) || p.price > balance;
-      const note = sessionActive ? "сеанс уже идёт" : p.nightOnly && !isNight() ? "22:00 – 08:00" : p.price > balance ? "не хватает средств" : p.nightOnly ? "22:00 – 08:00" : "";
+      const w = tariffWindow(p);
+      const outside = !inWindow(w);
+      const locked = sessionActive || outside || p.price > balance + bonus;
+      const note = sessionActive ? "сеанс уже идёт" : outside && w ? windowText(w) : p.price > balance + bonus ? "не хватает средств" : w ? windowText(w) : "";
       const b = el("button", { class: "hm-pkg", attrs: locked ? { disabled: "" } : {} }, [
         el("div", { class: "hm-pkg-name", text: p.name }),
         el("div", { class: "hm-pkg-price brand-gradient", text: `${p.price} ₽` }),
@@ -320,6 +368,7 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   navGames.addEventListener("click", () => ((tab = "game"), renderTabs()));
   navApps.addEventListener("click", () => ((tab = "app"), renderTabs()));
   navTime.addEventListener("click", openTariffs);
+  navBar.addEventListener("click", () => { modalErr.textContent = ""; h.onShopOpen(); });
   navFiles.addEventListener("click", () => (sessionActive ? h.onOpenExplorer() : toast("Файлы доступны во время сеанса", "error")));
   buy.addEventListener("click", openTariffs);
   const sessAction = () => (sessionActive ? openEndConfirm() : openTariffs());
@@ -350,6 +399,7 @@ export function buildHome(h: HomeHandlers): HomeScreen {
       renderRecent();
     },
     setBonus(b, loyalty) {
+      bonus = b;
       bonusVal.textContent = b > 0 ? `+ ${b} бонусов` : "";
       if (loyalty !== undefined)
         levelVal.textContent = loyalty?.level
@@ -360,6 +410,16 @@ export function buildHome(h: HomeHandlers): HomeScreen {
       promoBtn.disabled = false;
       if (ok) promoInput.value = "";
       toast(ok ? "Промокод принят: бонусы начислены" : error ?? "Промокод не принят", ok ? "ok" : "error");
+    },
+    setShop(list, error) {
+      shop = list;
+      shopError = error ?? "";
+      for (const id of [...order.keys()]) if (!shop.some((x) => x.id === id)) order.delete(id);
+      openBar();
+    },
+    orderResult(ok, error, total) {
+      if (ok) { order.clear(); closeModal(); toast(`Заказ принят${total ? ` на ${total} ₽` : ""}: администратор скоро принесёт`, "ok"); }
+      else { modalErr.textContent = error ?? "Не удалось оформить заказ"; openBar(); }
     },
     callResult(ok, text) {
       toast(text ?? (ok ? "Администратор вызван" : "Не удалось вызвать администратора"), ok ? "ok" : "error");
@@ -403,6 +463,8 @@ export function buildHome(h: HomeHandlers): HomeScreen {
     },
     reset() {
       bonusVal.textContent = levelVal.textContent = "";
+      bonus = 0;
+      order.clear();
       promoInput.value = "";
       user = "";
       balance = 0;

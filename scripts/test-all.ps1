@@ -164,6 +164,18 @@ Call DELETE "/api/admin/bookings/$bk" $adm | Out-Null
 Check "смена закрыта, отчёт пришёл" ((Call POST "/api/admin/shift/close" $adm @{ cash = 1300 }).Data.report.cashDiff -eq 0)
 Check "аналитика отвечает" ((Call GET "/api/admin/analytics?days=7" $adm).Status -eq 200)
 
+# бар и сотрудники
+Call PUT "/api/admin/products" $adm @{ name = "Test Cola"; category = "Drinks"; price = 100; stock = 3 } | Out-Null
+$prod = ((Call GET "/api/admin/products" $adm).Data | Where-Object { $_.name -eq "Test Cola" } | Select-Object -Last 1).id
+Check "продажа в баре за наличные" ((Call POST "/api/admin/sales" $adm @{ items = @(@{ productId = $prod; qty = 1 }); method = "cash" }).Data.ok -eq $true)
+Check "больше остатка не продать" ((Call POST "/api/admin/sales" $adm @{ items = @(@{ productId = $prod; qty = 5 }); method = "cash" }).Status -eq 400)
+$opLogin = "kassa" + (Get-Random -Minimum 1000 -Maximum 9999)
+Call POST "/api/admin/operators" $adm @{ login = $opLogin; name = "Kassa"; password = "kassa12345"; role = "cashier" } | Out-Null
+$opTok = (Call POST "/api/admin/login" @{} @{ login = $opLogin; password = "kassa12345" }).Data.token
+$op = @{ "X-Admin-Key" = $opTok }
+Check "кассир входит и видит гостей" ($opTok -and (Call GET "/api/admin/guests" $op).Status -eq 200)
+Check "кассиру нельзя менять тарифы (403)" ((Call PUT "/api/admin/tariffs" $op @{ id = "x"; name = "x"; minutes = 60; price = 1; nightOnly = $false }).Status -eq 403)
+
 Write-Host ""
 if ($script:fails -eq 0) { Write-Host "Автопроверки сервера: все пройдены." -ForegroundColor Green }
 else { Write-Host "Автопроверки сервера: ошибок $($script:fails). Дальше смотрите server.log." -ForegroundColor Red }

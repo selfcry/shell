@@ -50,6 +50,14 @@ internal sealed class PipeClubApi : IClubApi
         return new PromoResult(r.Ok, r.Error, r.Bonus);
     }
 
+    public async Task<List<ShopItem>> GetShopAsync() => (await CallAsync(new PipeMessage { Op = "shop" })).Shop ?? new();
+
+    public async Task<OrderResult> OrderAsync(string username, List<OrderItem> items)
+    {
+        var r = await CallAsync(new PipeMessage { Op = "order", User = username, Items = items });
+        return new OrderResult(r.Ok, r.Error, r.OrderId, r.Total, r.Ok ? r.Balance : null);
+    }
+
     public async Task StopSessionAsync(string pcId, string username) => await CallAsync(new PipeMessage { Op = "stop", User = username });
 
     /// <summary>Пульс шлёт сама служба.</summary>

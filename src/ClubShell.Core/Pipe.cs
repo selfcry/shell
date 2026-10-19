@@ -58,6 +58,10 @@ public sealed class PipeMessage
     public int Bonus { get; set; }
     public LoyaltyInfo? Loyalty { get; set; }
     public string? Code { get; set; }   // промокод
+    public List<ShopItem>? Shop { get; set; }
+    public List<OrderItem>? Items { get; set; }
+    public long? OrderId { get; set; }
+    public int? Total { get; set; }
     public int Minutes { get; set; }
     public CatalogSnapshot? Catalog { get; set; }
     public SpeedResult? Speed { get; set; }

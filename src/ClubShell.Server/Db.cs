@@ -119,6 +119,34 @@ public sealed class Db
               note TEXT,
               created INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_bookings_pc ON bookings(pc_id, starts) WHERE status = 'active';
+            CREATE TABLE IF NOT EXISTS products (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              category TEXT,
+              price INTEGER NOT NULL,
+              stock INTEGER NOT NULL DEFAULT 0,
+              active INTEGER NOT NULL DEFAULT 1,
+              sort INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS orders (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              pc_id INTEGER,
+              guest_id INTEGER,
+              lines TEXT NOT NULL,
+              total INTEGER NOT NULL,
+              method TEXT NOT NULL,
+              status TEXT NOT NULL,
+              ts INTEGER NOT NULL,
+              shift_id INTEGER);
+            CREATE INDEX IF NOT EXISTS ix_orders_status ON orders(status) WHERE status = 'new';
+            CREATE INDEX IF NOT EXISTS ix_orders_shift ON orders(shift_id);
+            CREATE TABLE IF NOT EXISTS operators (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              login TEXT NOT NULL UNIQUE COLLATE NOCASE,
+              name TEXT NOT NULL,
+              pass TEXT NOT NULL,
+              role TEXT NOT NULL,
+              active INTEGER NOT NULL DEFAULT 1,
+              created INTEGER NOT NULL);
             """);
         // миграции: новые колонки добавляются к уже существующей базе
         AddColumn(c, "pcs", "deleted", "INTEGER NOT NULL DEFAULT 0");
@@ -126,6 +154,8 @@ public sealed class Db
         AddColumn(c, "tx", "shift_id", "INTEGER");       // смена, в которую проведена операция
         AddColumn(c, "guests", "bonus", "INTEGER NOT NULL DEFAULT 0");
         AddColumn(c, "guests", "phone", "TEXT");
+        AddColumn(c, "tariffs", "from_hour", "INTEGER");  // окно действия тарифа (по времени клуба)
+        AddColumn(c, "tariffs", "to_hour", "INTEGER");
         Exec(c, "CREATE INDEX IF NOT EXISTS ix_tx_shift ON tx(shift_id) WHERE shift_id IS NOT NULL");
 
     }

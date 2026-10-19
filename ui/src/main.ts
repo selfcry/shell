@@ -34,6 +34,8 @@ const home = buildHome({
   onStartSession: (packageId) => send({ type: "startSession", packageId }),
   onCallAdmin: () => send({ type: "callAdmin" }),
   onPromo: (code) => send({ type: "promo", code }),
+  onShopOpen: () => send({ type: "shopOpen" }),
+  onOrder: (items) => send({ type: "order", items }),
   onEndSession: () => send({ type: "stopSession" }),
   onLogout: () => logout(),
   onOpenExplorer: () => send({ type: "openExplorer" }),
@@ -136,6 +138,12 @@ onMessage((msg: FromHost) => {
       break;
     case "callResult":
       home.callResult(msg.ok, msg.text);
+      break;
+    case "shop":
+      home.setShop(msg.items, msg.error);
+      break;
+    case "orderResult":
+      home.orderResult(msg.ok, msg.error, msg.total);
       break;
     case "notice":
       if (current === "home") home.notice(msg.text);

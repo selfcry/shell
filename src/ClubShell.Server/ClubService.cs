@@ -75,7 +75,8 @@ public sealed partial class ClubService
     }
 
     private static Pc ReadPc(SqliteDataReader r) => new(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetInt64(3));
-    private static Tariff ReadTariff(SqliteDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4) == 1, r.GetString(5), r.GetInt32(6) == 1, r.GetInt32(7));
+    private static Tariff ReadTariff(SqliteDataReader r) => new(r.GetString(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4) == 1, r.GetString(5), r.GetInt32(6) == 1, r.GetInt32(7),
+        r.IsDBNull(8) ? null : r.GetInt32(8), r.IsDBNull(9) ? null : r.GetInt32(9));
     private static Guest ReadGuest(SqliteDataReader r) => new(r.GetInt64(0), r.GetString(1), r.GetInt32(2), r.IsDBNull(3) ? null : r.GetString(3), r.GetInt32(4) == 1, r.GetInt64(5));
 
     private const string SessionSelect = """
@@ -285,7 +286,7 @@ public sealed partial class ClubService
         {
             var gen = Volatile.Read(ref _tariffGen);
             using var c = _db.Open();
-            all = Db.Query(c, "SELECT id, name, minutes, price, night_only, zone, active, sort FROM tariffs ORDER BY sort, minutes", ReadTariff);
+            all = Db.Query(c, "SELECT id, name, minutes, price, night_only, zone, active, sort, from_hour, to_hour FROM tariffs ORDER BY sort, minutes", ReadTariff);
             if (gen == Volatile.Read(ref _tariffGen)) _tariffCache = all;
         }
         return all.Where(t => (zone is null || t.Zone.Equals(zone, StringComparison.OrdinalIgnoreCase)) && (!onlyActive || t.Active)).ToList();
@@ -295,12 +296,14 @@ public sealed partial class ClubService
     {
         if (string.IsNullOrWhiteSpace(t.Id) || t.Id.Length > 32 || string.IsNullOrWhiteSpace(t.Name)) return new Result(false, "Нужны id и название");
         if (t.Minutes is < 1 or > 24 * 60 * 7 || t.Price < 0) return new Result(false, "Недопустимые время или цена");
+        if (t.FromHour is < 0 or > 23 || t.ToHour is < 0 or > 23 || (t.FromHour is null) != (t.ToHour is null) || t.FromHour is { } fh && fh == t.ToHour)
+            return new Result(false, "Окно тарифа: часы с 0 до 23, «с» и «до» вместе и не равны");
         using var c = _db.Open();
         lock (_writeLock)
         Db.Exec(c, """
-            INSERT INTO tariffs(id, name, minutes, price, night_only, zone, active, sort) VALUES($i, $n, $m, $p, $o, $z, $a, $s)
-            ON CONFLICT(id) DO UPDATE SET name = $n, minutes = $m, price = $p, night_only = $o, zone = $z, active = $a, sort = $s
-            """, ("$i", t.Id.Trim()), ("$n", t.Name.Trim()), ("$m", t.Minutes), ("$p", t.Price), ("$o", t.NightOnly ? 1 : 0),
+            INSERT INTO tariffs(id, name, minutes, price, night_only, zone, active, sort, from_hour, to_hour) VALUES($i, $n, $m, $p, $o, $z, $a, $s, $fh, $th)
+            ON CONFLICT(id) DO UPDATE SET name = $n, minutes = $m, price = $p, night_only = $o, zone = $z, active = $a, sort = $s, from_hour = $fh, to_hour = $th
+            """, ("$fh", t.FromHour), ("$th", t.ToHour), ("$i", t.Id.Trim()), ("$n", t.Name.Trim()), ("$m", t.Minutes), ("$p", t.Price), ("$o", t.NightOnly ? 1 : 0),
             ("$z", string.IsNullOrWhiteSpace(t.Zone) ? "ARENA" : t.Zone.Trim()), ("$a", t.Active == false ? 0 : 1), ("$s", t.Sort ?? 0));
         Interlocked.Increment(ref _tariffGen);
         _tariffCache = null;
@@ -404,7 +407,7 @@ public sealed partial class ClubService
             var bonus = Db.Scalar<int>(c, "SELECT bonus FROM guests WHERE id = $i", ("$i", g.Id));
             var t = Tariffs(pc.Zone).FirstOrDefault(x => x.Id == tariffId);
             if (t is null) return (false, "Тариф не найден", g.Balance, 0, bonus);
-            if (t.NightOnly && !IsNight(DateTimeOffset.UtcNow)) return (false, "Ночной тариф с 22:00 до 08:00", g.Balance, 0, bonus);
+            if (t.Window is { } w && !InWindow(w, Db.Now())) return (false, $"Тариф «{t.Name}» действует с {w.from:00}:00 до {w.to:00}:00", g.Balance, 0, bonus);
             var fromBonus = Math.Min(bonus, t.Price);
             var money = t.Price - fromBonus;
             if (g.Balance < money) return (false, "Недостаточно средств", g.Balance, 0, bonus);
@@ -413,7 +416,7 @@ public sealed partial class ClubService
 
             var now = Db.Now();
             var ends = now + t.Minutes * 60L;
-            if (t.NightOnly) ends = Math.Min(ends, NightEnd(now)); // ночной пакет действует только до 08:00
+            if (t.Window is { } win) ends = Math.Min(ends, WindowEnd(win, now)); // пакет по времени суток действует только до конца своего окна
             // ПК забронирован другим гостем раньше, чем закончится сеанс
             if (NextForeignBooking(c, pc.Id, g.Id, now, ends) is { } bk)
                 return (false, $"ПК забронирован с {Local(bk.starts):HH:mm}. Выберите тариф короче или другой ПК", g.Balance, 0, bonus);
@@ -444,12 +447,19 @@ public sealed partial class ClubService
     }
 
     /// <summary>Завершает активную сессию ПК. Возвращает завершённую сессию или null, если активной не было.</summary>
-    /// <summary>Ближайшие 08:00 по времени клуба (конец ночного тарифа), секунды Unix.</summary>
-    private long NightEnd(long nowUnix)
+    /// <summary>Сейчас внутри окна from→to (по времени клуба)? Окно может переходить через полночь (22→8).</summary>
+    private bool InWindow((int from, int to) w, long nowUnix)
+    {
+        var h = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(nowUnix), _tz).Hour;
+        return w.from < w.to ? h >= w.from && h < w.to : h >= w.from || h < w.to;
+    }
+
+    /// <summary>Ближайший конец окна (час to:00 по времени клуба), секунды Unix.</summary>
+    private long WindowEnd((int from, int to) w, long nowUnix)
     {
         var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(nowUnix), _tz);
-        var end = new DateTime(local.Year, local.Month, local.Day, 8, 0, 0, DateTimeKind.Unspecified);
-        if (local.Hour >= 8) end = end.AddDays(1);
+        var end = new DateTime(local.Year, local.Month, local.Day, w.to, 0, 0, DateTimeKind.Unspecified);
+        if (local.Hour >= w.to) end = end.AddDays(1);
         return new DateTimeOffset(end, _tz.GetUtcOffset(end)).ToUnixTimeSeconds();
     }
 

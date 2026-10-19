@@ -7,7 +7,12 @@ export interface TariffPackage {
   minutes: number;
   price: number; // рубли
   nightOnly?: boolean; // доступно только 22:00–08:00
+  fromHour?: number | null; // окно действия тарифа (по времени клуба), например 8 → 14
+  toHour?: number | null;
 }
+
+/** Товар бара в меню на ПК. */
+export interface ShopItem { id: number; name: string; category: string | null; price: number; stock: number }
 
 /** Запись каталога, как её видит интерфейс. Пути и аргументы запуска знает только хост. */
 export interface CatalogItem {
@@ -88,6 +93,8 @@ export type ToHost =
   | { type: "reboot" }
   | { type: "callAdmin" } // «Позвать администратора»
   | { type: "promo"; code: string } // ввести промокод
+  | { type: "shopOpen" } // загрузить меню бара
+  | { type: "order"; items: { productId: number; qty: number }[] } // заказ в бар с баланса
   | { type: "adminExit"; pin: string };
 
 /** Уровень гостя в программе лояльности. */
@@ -112,6 +119,8 @@ export type FromHost =
   | { type: "bonus"; bonus: number } // бонусов стало столько (после покупки или промокода)
   | { type: "promoResult"; ok: boolean; error?: string; bonus?: number }
   | { type: "callResult"; ok: boolean; text?: string }
+  | { type: "shop"; items: ShopItem[]; error?: string }
+  | { type: "orderResult"; ok: boolean; error?: string; orderId?: number; total?: number }
   | { type: "session"; remainingSec: number | null; balance: number; bonus: number } // для панели задач
   | { type: "startResult"; ok: boolean; error?: string }
   | { type: "tick"; remainingSec: number; balance: number }

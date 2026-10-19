@@ -142,3 +142,17 @@ body.on-desktop .backdrop video { opacity: 0.18; }
 .hm-promo-btn:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
 .hm-call { margin-top: auto; }
 .hm-call:hover:not(:disabled) { border-color: var(--orange); color: var(--orange); }
+
+/* бар */
+.hm-shop { display: grid; gap: 1rem; max-height: 55vh; overflow: auto; margin: 0.8rem 0; padding-right: 0.3rem; }
+.hm-shop-cat { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.4rem; }
+.hm-shop-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; }
+.hm-shop-item { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding: 0.8rem 1rem; border-radius: 0.9rem; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); }
+.hm-shop-item.on { border-color: var(--orange); background: rgba(255, 107, 0, 0.08); }
+.hm-shop-name { font-weight: 700; }
+.hm-qtys { display: flex; align-items: center; gap: 0.5rem; }
+.hm-qtys b { min-width: 1.2rem; text-align: center; }
+.hm-qty { width: 2rem; height: 2rem; border-radius: 0.6rem; border: 1px solid var(--line); background: transparent; color: var(--text); font: 700 1rem var(--font-body); cursor: pointer; }
+.hm-qty:hover { border-color: var(--orange); color: var(--orange); }
+.hm-primary { background: linear-gradient(90deg, #ff5a00, #f5ff00); color: #000; border: 0; margin-top: 0.6rem; }
+.hm-primary:disabled { opacity: 0.45; cursor: default; }

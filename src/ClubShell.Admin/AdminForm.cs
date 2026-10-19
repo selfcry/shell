@@ -63,10 +63,11 @@ internal sealed class AdminForm : Form
     {
         _http?.Dispose();
         _http = null;
-        if (Uri.TryCreate(_settings.ServerUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && _settings.GetKey() is { } key)
+        // адрес есть, а ключа ещё нет — можно только войти сотрудником (/api/admin/login), остальное сервер отклонит
+        if (Uri.TryCreate(_settings.ServerUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
         {
             _http = new HttpClient { BaseAddress = new Uri(uri.GetLeftPart(UriPartial.Authority) + "/"), Timeout = TimeSpan.FromSeconds(10) };
-            _http.DefaultRequestHeaders.Add("X-Admin-Key", key);
+            if (_settings.GetKey() is { } key) _http.DefaultRequestHeaders.Add("X-Admin-Key", key);
         }
     }
 

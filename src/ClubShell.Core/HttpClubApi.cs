@@ -77,5 +77,14 @@ public sealed class HttpClubApi : IClubApi, IDisposable
         return new PromoResult(r.Ok, r.Error, r.Bonus);
     }
 
+    public async Task<List<ShopItem>> GetShopAsync()
+    {
+        using var resp = await _http.GetAsync("api/pc/shop");
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<List<ShopItem>>(Json) ?? new();
+    }
+
+    public Task<OrderResult> OrderAsync(string username, List<OrderItem> items) => PostAsync<OrderResult>("api/pc/order", new { username, items });
+
     public void Dispose() => _http.Dispose();
 }

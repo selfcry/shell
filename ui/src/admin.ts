@@ -19,7 +19,7 @@ interface PcRow {
   call?: null | { ts: number; guest: string | null };
 }
 interface GuestRow { id: number; login: string; balance: number; birth: string | null; banned: boolean; created: number; bonus?: number; phone?: string | null }
-interface TariffRow { id: string; name: string; minutes: number; price: number; nightOnly: boolean; zone: string; active: boolean; sort: number }
+interface TariffRow { id: string; name: string; minutes: number; price: number; nightOnly: boolean; zone: string; active: boolean; sort: number; fromHour?: number | null; toHour?: number | null }
 interface SessionRow { id: number; guestId: number; guest: string; pcId: number; pc: string; tariffId: string; started: number; ends: number; ended: number | null; price: number; reason: string | null }
 interface TxRow { id: number; amount: number; kind: string; note: string | null; ts: number }
 interface ApiReply<T> { status: number; data: T }
@@ -121,11 +121,12 @@ async function run(promise: Promise<ApiReply<{ ok?: boolean; error?: string }>>,
 }
 
 // ---------- каркас ----------
-type ViewName = "dashboard" | "pcs" | "shift" | "guests" | "bookings" | "tariffs" | "sessions" | "loyalty" | "analytics" | "apps" | "blocked" | "audit" | "settings";
+type ViewName = "dashboard" | "pcs" | "shift" | "bar" | "guests" | "bookings" | "tariffs" | "sessions" | "loyalty" | "analytics" | "apps" | "blocked" | "audit" | "staff" | "settings";
 const VIEWS: { id: ViewName; title: string }[] = [
   { id: "dashboard", title: "Дашборд" },
   { id: "pcs", title: "Зал" },
   { id: "shift", title: "Смена и касса" },
+  { id: "bar", title: "Бар и склад" },
   { id: "guests", title: "Гости" },
   { id: "bookings", title: "Брони" },
   { id: "tariffs", title: "Тарифы" },
@@ -135,8 +136,12 @@ const VIEWS: { id: ViewName; title: string }[] = [
   { id: "apps", title: "Игры и приложения" },
   { id: "blocked", title: "Запреты" },
   { id: "audit", title: "Журнал" },
+  { id: "staff", title: "Сотрудники" },
   { id: "settings", title: "Настройки" },
 ];
+/** Вкладки, которые кассиру не нужны (сервер всё равно не даст менять). */
+const OWNER_VIEWS = new Set<ViewName>(["loyalty", "analytics", "apps", "blocked", "audit", "staff", "settings"]);
+let me: { name: string; role: string } = { name: "", role: "owner" };
 
 let serverUrl = "";
 let current: ViewName = "dashboard";
@@ -146,20 +151,21 @@ let renderGen = 0; // устаревшие ответы не должны пер
 const nav = el("nav", { class: "ad-nav" });
 const content = el("main", { class: "ad-main" });
 const serverLabel = el("div", { class: "ad-server" });
+const whoLabel = el("div", { class: "ad-who" });
 const shell = el("div", { class: "ad-shell" }, [
   el("aside", { class: "ad-side" }, [
     el("div", { class: "ad-brand" }, [el("span", { class: "brand-gradient", text: "МИРАЖ" }), el("small", { text: "PRO · админ" })]),
     nav,
-    el("div", { class: "ad-side-foot" }, [serverLabel, isLiveAdmin
-      ? button("Выйти", "ghost", () => send({ type: "saveSettings", serverUrl, key: "" }))
-      : button("Сменить сервер", "ghost", () => showConnect())]),
+    el("div", { class: "ad-side-foot" }, [whoLabel, serverLabel, isLiveAdmin
+      ? button("Выйти", "ghost", async () => { await api("POST", "/api/admin/logout"); send({ type: "saveSettings", serverUrl, key: "" }); })
+      : button("Сменить пользователя", "ghost", async () => { await api("POST", "/api/admin/logout"); showConnect(); })]),
   ]),
   content,
 ]);
 
 function buildNav(): void {
   nav.replaceChildren(
-    ...VIEWS.map((v) => {
+    ...VIEWS.filter((v) => me.role === "owner" || !OWNER_VIEWS.has(v.id)).map((v) => {
       const b = el("button", { class: "ad-nav-item" + (v.id === current ? " active" : ""), text: v.title });
       b.addEventListener("click", () => go(v.id));
       return b;
@@ -174,14 +180,14 @@ function go(view: ViewName): void {
   void render();
   window.clearInterval(timer);
   // дашборд, ПК и сеансы обновляются сами, гости и тарифы — по действию (иначе сбивается ввод)
-  if (view === "dashboard" || view === "pcs" || view === "sessions" || view === "shift") timer = window.setInterval(() => void render(true), 3000);
+  if (view === "dashboard" || view === "pcs" || view === "sessions" || view === "shift" || view === "bar") timer = window.setInterval(() => void render(true), 3000);
 }
 
 async function render(silent = false): Promise<void> {
   const gen = ++renderGen;
   const views: Record<ViewName, () => Promise<HTMLElement | null>> = {
-    dashboard: viewDashboard, pcs: viewPcs, shift: viewShift, guests: viewGuests, bookings: viewBookings, tariffs: viewTariffs, sessions: viewSessions,
-    loyalty: viewLoyalty, analytics: viewAnalytics, apps: viewApps, blocked: viewBlocked, audit: viewAudit, settings: viewSettings,
+    dashboard: viewDashboard, pcs: viewPcs, shift: viewShift, bar: viewBar, guests: viewGuests, bookings: viewBookings, tariffs: viewTariffs, sessions: viewSessions,
+    loyalty: viewLoyalty, analytics: viewAnalytics, apps: viewApps, blocked: viewBlocked, audit: viewAudit, staff: viewStaff, settings: viewSettings,
   };
   const node = await views[current]();
   if (gen !== renderGen || !node) return;
@@ -454,7 +460,7 @@ async function viewTariffs(): Promise<HTMLElement | null> {
     t.zone,
     t.minutes % 60 === 0 ? `${t.minutes / 60} ч` : `${t.minutes} мин`,
     rub(t.price),
-    t.nightOnly ? badge("22:00–08:00", "warn") : "весь день",
+    t.fromHour != null && t.toHour != null ? badge(`${String(t.fromHour).padStart(2, "0")}:00–${String(t.toHour).padStart(2, "0")}:00`, "warn") : t.nightOnly ? badge("22:00–08:00", "warn") : "весь день",
     t.active ? badge("включён", "ok") : badge("выключен"),
     el("div", { class: "ad-btnrow" }, [
       button("Изменить", "", () => tariffDialog(t)),
@@ -474,11 +480,16 @@ function tariffDialog(t?: TariffRow): void {
   const sort = textInput(String(t?.sort ?? 0), "number");
   const night = el("input", { attrs: { type: "checkbox" } });
   night.checked = t?.nightOnly ?? false;
+  const hours = (v: number | null | undefined) => el("select", { class: "ad-input" }, [el("option", { attrs: { value: "" }, text: "—" }),
+    ...Array.from({ length: 24 }, (_, h) => el("option", { attrs: { value: String(h), ...(v === h ? { selected: "" } : {}) }, text: `${String(h).padStart(2, "0")}:00` }))]);
+  const fromH = hours(t?.fromHour), toH = hours(t?.toHour);
   const active = el("input", { attrs: { type: "checkbox" } });
   active.checked = t?.active ?? true;
   const close = modal(t ? `Тариф «${t.name}»` : "Новый тариф", [
     field("Код (латиницей, не меняется)", id), field("Название", name), field("Минут", minutes), field("Цена, ₽", price), field("Зона", zone), field("Порядок в списке", sort),
     el("label", { class: "ad-check" }, [night, el("span", { text: "Только ночью (22:00–08:00)" })]),
+    el("div", { class: "ad-two" }, [field("Действует с (необязательно)", fromH), field("до", toH)]),
+    el("p", { class: "ad-muted ad-small", text: "Например, «Утро» с 08:00 до 14:00 дешевле. Купить можно только в это время, и сеанс заканчивается в конце окна." }),
     el("label", { class: "ad-check" }, [active, el("span", { text: "Включён" })]),
   ], [
     button("Сохранить", "primary", async () => {
@@ -487,7 +498,8 @@ function tariffDialog(t?: TariffRow): void {
       if (pr === null) return toast("Цена — целое число рублей (0 — бесплатно)", "error");
       const ok = await run(api("PUT", "/api/admin/tariffs", {
         id: id.value.trim(), name: name.value.trim(), minutes: m, price: pr,
-        nightOnly: night.checked, zone: zone.value.trim() || "ARENA", active: active.checked, sort: Number(sort.value) || 0,
+        nightOnly: night.checked, fromHour: (fromH as HTMLSelectElement).value === "" ? null : Number((fromH as HTMLSelectElement).value),
+        toHour: (toH as HTMLSelectElement).value === "" ? null : Number((toH as HTMLSelectElement).value), zone: zone.value.trim() || "ARENA", active: active.checked, sort: Number(sort.value) || 0,
       }), "Тариф сохранён", () => void render());
       if (ok) close();
     }),
@@ -668,6 +680,7 @@ interface ShiftInfo { id: number; opened: number; closed: number | null; cashier
 interface ShiftReport {
   shift: ShiftInfo; topupCash: number; topupCard: number; topupSbp: number; topupOther: number; charges: number; chargesCash: number;
   sessionRevenue: number; sessions: number; bonusSpent: number; newGuests: number; cashExpected: number; cashDiff: number | null;
+  barCash?: number; barCard?: number; barSbp?: number; barBalance?: number;
 }
 
 function reportBlock(r: ShiftReport): HTMLElement {
@@ -676,6 +689,8 @@ function reportBlock(r: ShiftReport): HTMLElement {
     row("Наличными", rub(r.topupCash)), row("Картой", rub(r.topupCard)), row("СБП", rub(r.topupSbp)),
     ...(r.topupOther ? [row("Без оплаты", rub(r.topupOther))] : []),
     row("Списания и возвраты", rub(r.charges)),
+    row("Бар: наличные / карта / СБП", `${rub(r.barCash ?? 0)} / ${rub(r.barCard ?? 0)} / ${rub(r.barSbp ?? 0)}`),
+    row("Бар с баланса гостей", rub(r.barBalance ?? 0)),
     row("Выручка за сеансы", `${rub(r.sessionRevenue)} · ${r.sessions} сеансов`),
     row("Оплачено бонусами", rub(r.bonusSpent)),
     row("Новых гостей", String(r.newGuests)),
@@ -921,6 +936,127 @@ async function viewSettings(): Promise<HTMLElement | null> {
   ]);
 }
 
+// ---------- бар и склад ----------
+interface ProductRow { id: number; name: string; category: string | null; price: number; stock: number; active: boolean; sort: number }
+interface OrderRow { id: number; pcId: number | null; pc: string | null; guestId: number | null; guest: string | null; lines: { productId: number; name: string; qty: number; price: number }[]; total: number; method: string; status: string; ts: number }
+const cart = new Map<number, number>();
+
+async function viewBar(): Promise<HTMLElement | null> {
+  const [pr, ord] = await Promise.all([api<ProductRow[]>("GET", "/api/admin/products"), api<OrderRow[]>("GET", "/api/admin/orders")]);
+  if (pr.status !== 200) return connectionProblem(pr.status);
+  const products = Array.isArray(pr.data) ? pr.data : [];
+  const orders = Array.isArray(ord.data) ? ord.data : [];
+  const total = [...cart].reduce((sum, [id, q]) => sum + (products.find((p) => p.id === id)?.price ?? 0) * q, 0);
+
+  const tiles = products.filter((p) => p.active).map((p) => {
+    const b = el("button", { class: "ad-prod" + (p.stock <= 0 ? " out" : ""), attrs: p.stock <= 0 ? { disabled: "" } : {} }, [
+      el("b", { text: p.name }), el("span", { text: rub(p.price) }), el("small", { class: p.stock <= 5 ? "low" : "", text: `осталось ${p.stock}` }),
+      cart.get(p.id) ? el("i", { text: `×${cart.get(p.id)}` }) : el("span"),
+    ]);
+    b.addEventListener("click", () => { if ((cart.get(p.id) ?? 0) < p.stock) cart.set(p.id, (cart.get(p.id) ?? 0) + 1); void render(); });
+    return b;
+  });
+  const login = textInput("", "text", "Логин гостя (для оплаты с баланса)");
+  const sell = (method: string) => async () => {
+    if (cart.size === 0) return toast("Выберите товары", "error");
+    if (method === "balance" && !login.value.trim()) return toast("Укажите логин гостя", "error");
+    const ok = await run(api("POST", "/api/admin/sales", { items: [...cart].map(([productId, qty]) => ({ productId, qty })), method, login: login.value.trim() || null }), `Продано на ${rub(total)}`);
+    if (ok) { cart.clear(); void render(); }
+  };
+  const cartBox = el("section", { class: "ad-card" }, [
+    el("h2", { text: "Продажа" }),
+    cart.size ? el("div", { class: "ad-cart" }, [...cart].map(([id, q]) => {
+      const p = products.find((x) => x.id === id);
+      return el("div", { class: "ad-rep-row" }, [el("span", { text: `${p?.name ?? id} ×${q}` }), el("b", { text: rub((p?.price ?? 0) * q) }), button("−", "icon", () => { q > 1 ? cart.set(id, q - 1) : cart.delete(id); void render(); })]);
+    })) : el("p", { class: "ad-muted", text: "Нажимайте на товары слева, чтобы добавить." }),
+    el("div", { class: "ad-rep-row strong" }, [el("span", { text: "Итого" }), el("b", { text: rub(total) })]),
+    login,
+    el("div", { class: "ad-btnrow ad-pay" }, [button("Наличные", "primary", sell("cash")), button("Карта", "", sell("card")), button("СБП", "", sell("sbp")), button("С баланса", "", sell("balance")), button("Очистить", "ghost", () => { cart.clear(); void render(); })]),
+  ]);
+  const orderRows = orders.map((o) => [
+    el("b", { text: `#${o.id} · ${o.pc ?? "стойка"}` }), o.guest ?? "", o.lines.map((l) => `${l.name} ×${l.qty}`).join(", "), rub(o.total), when(o.ts),
+    el("div", { class: "ad-btnrow" }, [
+      button("Выдан", "primary", () => run(api("POST", `/api/admin/orders/${o.id}/done`), "Заказ выдан", () => void render())),
+      button("Отменить", "", () => confirmBox("Отменить заказ?", "Товар вернётся на склад, деньги — на баланс гостя.", "Отменить заказ", () => void run(api("POST", `/api/admin/orders/${o.id}/cancel`), "Заказ отменён", () => void render()))),
+    ]),
+  ]);
+  const stockRows = products.map((p) => [
+    el("b", { text: p.name }), p.category ?? "", rub(p.price), el("span", { class: p.stock <= 5 ? "ad-minus" : "", text: String(p.stock) }), p.active ? badge("в продаже", "ok") : badge("снят"),
+    el("div", { class: "ad-btnrow" }, [button("Приход", "", () => stockDialog(p)), ...(me.role === "owner" ? [button("Изменить", "", () => productDialog(p))] : [])]),
+  ]);
+  return el("div", {}, [
+    header("Бар и склад", ...(me.role === "owner" ? [button("Новый товар", "primary", () => productDialog())] : [])),
+    orders.length ? el("section", { class: "ad-card ad-orders" }, [el("h2", { text: `Заказы с ПК: ${orders.length}` }), table(["Заказ", "Гость", "Состав", "Сумма", "Когда", ""], orderRows)]) : el("span"),
+    el("div", { class: "ad-cols ad-bar-cols" }, [el("section", { class: "ad-card" }, [el("h2", { text: "Товары" }), tiles.length ? el("div", { class: "ad-prods" }, tiles) : el("div", { class: "ad-empty", text: "Товаров ещё нет" })]), cartBox]),
+    el("h2", { class: "ad-sub", text: "Склад" }),
+    table(["Товар", "Категория", "Цена", "Остаток", "Статус", ""], stockRows, "Склад пуст"),
+  ]);
+}
+
+function productDialog(p?: ProductRow): void {
+  const name = textInput(p?.name ?? "", "text", "Кола 0.5");
+  const cat = textInput(p?.category ?? "", "text", "Напитки");
+  const price = textInput(String(p?.price ?? 100), "number");
+  const stock = textInput(p ? "" : "0", "number", p ? `сейчас ${p.stock}, пусто — не менять` : "0");
+  const active = el("input", { attrs: { type: "checkbox" } });
+  active.checked = p?.active ?? true;
+  const close = modal(p ? `Товар «${p.name}»` : "Новый товар", [
+    field("Название", name), field("Категория", cat), el("div", { class: "ad-two" }, [field("Цена, ₽", price), field("Остаток, шт.", stock)]),
+    el("label", { class: "ad-check" }, [active, el("span", { text: "В продаже (виден гостям в меню на ПК)" })]),
+  ], [button("Сохранить", "primary", async () => {
+    const pr = intOf(price), st = stock.value.trim() === "" ? null : intOf(stock);
+    if (pr === null || (stock.value.trim() !== "" && st === null)) return toast("Цена и остаток — целые числа", "error");
+    if (await run(api("PUT", "/api/admin/products", { id: p?.id ?? null, name: name.value.trim(), category: cat.value.trim() || null, price: pr, stock: st, active: active.checked, sort: p?.sort ?? 0 }), "Сохранено", () => void render())) close();
+  })]);
+  name.focus();
+}
+
+function stockDialog(p: ProductRow): void {
+  const qty = textInput("10", "number");
+  const close = modal(`Приход: ${p.name}`, [el("p", { class: "ad-muted", text: `Сейчас на складе ${p.stock} шт.` }), field("Сколько пришло, шт.", qty)], [
+    button("Списать", "", async () => { const n = intOf(qty); if (!n) return toast("Введите количество", "error"); if (await run(api("POST", `/api/admin/products/${p.id}/stock`, { qty: -n }), "Списано", () => void render())) close(); }),
+    button("Добавить", "primary", async () => { const n = intOf(qty); if (!n) return toast("Введите количество", "error"); if (await run(api("POST", `/api/admin/products/${p.id}/stock`, { qty: n }), "Добавлено", () => void render())) close(); }),
+  ]);
+  qty.select();
+}
+
+// ---------- сотрудники ----------
+interface OperatorRow { id: number; login: string; name: string; role: string; active: boolean; created: number }
+
+async function viewStaff(): Promise<HTMLElement | null> {
+  const r = await api<OperatorRow[]>("GET", "/api/admin/operators");
+  if (r.status !== 200) return connectionProblem(r.status);
+  const rows = (Array.isArray(r.data) ? r.data : []).map((o) => [
+    el("b", { text: o.login }), o.name, o.role === "owner" ? badge("владелец", "warn") : badge("кассир"), o.active ? badge("активен", "ok") : badge("отключён", "bad"), when(o.created),
+    el("div", { class: "ad-btnrow" }, [
+      button("Пароль", "", () => {
+        const pass = textInput("", "text", "Новый пароль (от 8 символов)");
+        const close = modal(`Пароль: ${o.login}`, [field("Новый пароль", pass)], [button("Сменить", "primary", async () => { if (await run(api("PUT", `/api/admin/operators/${o.id}`, { password: pass.value }), "Пароль изменён")) close(); })]);
+        pass.focus();
+      }),
+      button(o.active ? "Отключить" : "Включить", "", () => void run(api("PUT", `/api/admin/operators/${o.id}`, { active: !o.active }), "Готово", () => void render())),
+    ]),
+  ]);
+  return el("div", {}, [
+    header("Сотрудники", button("Новый сотрудник", "primary", staffDialog)),
+    el("p", { class: "ad-muted ad-note", text: "У каждого кассира свой логин: в «Журнале» видно, кто пополнял баланс и что менял. Кассир работает с залом, сменой, гостями, бронями и баром; тарифы, каталог, бонусы, аналитика, журнал и сотрудники — только у владельца. Ключ владельца (admin-key.txt) кассирам не давайте." }),
+    table(["Логин", "Имя", "Роль", "Статус", "Создан", ""], rows, "Сотрудников ещё нет"),
+  ]);
+}
+
+function staffDialog(): void {
+  const login = textInput("", "text", "kassa1");
+  const name = textInput("", "text", "Имя, как в журнале");
+  const pass = textInput("", "text", "От 8 символов");
+  const role = el("select", { class: "ad-input" }, [el("option", { attrs: { value: "cashier" }, text: "Кассир" }), el("option", { attrs: { value: "owner" }, text: "Владелец (полный доступ)" })]);
+  const close = modal("Новый сотрудник", [field("Логин", login), field("Имя", name), field("Пароль", pass), field("Роль", role)], [
+    button("Создать", "primary", async () => {
+      if (await run(api("POST", "/api/admin/operators", { login: login.value.trim(), name: name.value.trim(), password: pass.value, role: (role as HTMLSelectElement).value }), "Сотрудник создан", () => void render())) close();
+    }),
+  ]);
+  login.focus();
+}
+
 // ---------- вызовы администратора: видно на любой вкладке ----------
 interface CallRow { pcId: number; pc: string; guest: string | null; ts: number }
 const callBar = el("div", { class: "ad-callbar", attrs: { hidden: "" } });
@@ -938,14 +1074,21 @@ function beep(): void {
   } catch { /* без звука */ }
 }
 
+let knownOrders = new Set<number>();
+
 async function refreshCalls(): Promise<void> {
-  const r = await api<CallRow[]>("GET", "/api/admin/calls");
+  const [r, o] = await Promise.all([api<CallRow[]>("GET", "/api/admin/calls"), api<OrderRow[]>("GET", "/api/admin/orders")]);
   if (r.status !== 200 || !Array.isArray(r.data)) return;
-  const fresh = r.data.filter((c) => !knownCalls.has(c.pcId));
-  if (fresh.length) beep();
+  const orders = Array.isArray(o.data) ? o.data : [];
+  const fresh = r.data.filter((c) => !knownCalls.has(c.pcId)).length + orders.filter((x) => !knownOrders.has(x.id)).length;
+  if (fresh) beep();
   knownCalls = new Set(r.data.map((c) => c.pcId));
-  callBar.hidden = r.data.length === 0;
-  callBar.replaceChildren(...r.data.map((c) => el("div", { class: "ad-callitem" }, [
+  knownOrders = new Set(orders.map((x) => x.id));
+  callBar.hidden = r.data.length === 0 && orders.length === 0;
+  callBar.replaceChildren(...orders.map((x) => el("div", { class: "ad-callitem order" }, [
+    el("b", { text: `🍔 ${x.pc ?? ""}` }), el("span", { text: `${x.guest ?? ""}: ${x.lines.map((l) => `${l.name} ×${l.qty}`).join(", ")} · ${rub(x.total)}` }),
+    button("К бару", "primary", () => go("bar")),
+  ])), ...r.data.map((c) => el("div", { class: "ad-callitem" }, [
     el("b", { text: `🔔 ${c.pc}` }), el("span", { text: `${c.guest ?? "гость"} зовёт администратора · ${new Date(c.ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` }),
     button("Иду", "primary", async () => { await api("POST", `/api/admin/calls/${c.pcId}/ack`); void refreshCalls(); if (current === "pcs") void render(true); }),
   ])));
@@ -963,33 +1106,61 @@ window.setInterval(() => {
 // ---------- подключение ----------
 function showConnect(message = ""): void {
   window.clearInterval(timer);
-  const url = textInput(serverUrl || "https://", "text", "https://club.example.ru");
+  window.clearInterval(callTimer);
+  callBar.hidden = true;
+  let mode: "staff" | "owner" = "staff";
+  const url = textInput(serverUrl || "https://cryvx.ru", "text", "https://club.example.ru");
+  const login = textInput("", "text", "Логин сотрудника");
+  const pass = textInput("", "password", "Пароль");
   const key = textInput("", "password", "Ключ из admin-key.txt на сервере");
   const err = el("div", { class: "ad-connect-err", text: message });
-  const go1 = button("Подключиться", "primary", () => {
-    if (!url.value.trim() || !key.value.trim()) { err.textContent = "Заполните адрес и ключ"; return; }
-    go1.disabled = true;
+  const fields = el("div");
+  const tabs = el("div", { class: "ad-tabs" });
+  const paint = () => {
+    tabs.replaceChildren(
+      ...([["staff", "Сотрудник"], ["owner", "Владелец (ключ)"]] as const).map(([m, t]) => {
+        const b = el("button", { class: "ad-tab" + (mode === m ? " on" : ""), text: t });
+        b.addEventListener("click", () => { mode = m; paint(); });
+        return b;
+      }),
+    );
+    fields.replaceChildren(...(mode === "staff" ? [field("Логин", login), field("Пароль", pass)] : [field("Ключ администратора", key)]));
+    (mode === "staff" ? login : key).focus();
+  };
+  const go1 = button("Войти", "primary", async () => {
+    const server = isLiveAdmin ? serverUrl : url.value.trim();
+    if (!server) { err.textContent = "Укажите адрес сервера"; return; }
     err.textContent = "";
+    if (mode === "owner") {
+      if (!key.value.trim()) { err.textContent = "Введите ключ"; return; }
+      waitingConnect = true;
+      send({ type: "saveSettings", serverUrl: server, key: key.value.trim() });
+      return;
+    }
+    if (!login.value.trim() || !pass.value) { err.textContent = "Введите логин и пароль"; return; }
+    // сначала сохраняем адрес (без ключа), потом входим: сервер выдаст токен сотрудника на 12 часов
+    if (!isLiveAdmin) { send({ type: "saveSettings", serverUrl: server, key: "" }); serverUrl = server; await new Promise((r) => setTimeout(r, 150)); }
+    const r = await api<{ ok?: boolean; error?: string; token?: string }>("POST", "/api/admin/login", { login: login.value.trim(), password: pass.value });
+    if (r.status !== 200 || !r.data.token) { err.textContent = r.data.error ?? (r.status === 0 ? "Сервер недоступен" : "Не удалось войти"); return; }
+    pass.value = "";
     waitingConnect = true;
-    send({ type: "saveSettings", serverUrl: url.value.trim(), key: key.value.trim() });
+    send({ type: "saveSettings", serverUrl: server, key: r.data.token });
   });
   app.replaceChildren(
     el("div", { class: "ad-connect" }, [
       el("div", { class: "ad-brand big" }, [el("span", { class: "brand-gradient", text: "МИРАЖ" }), el("small", { text: "PRO · админ" })]),
       el("div", { class: "ad-connect-box" }, [
-        el("h1", { text: "Подключение к серверу" }),
+        el("h1", { text: "Вход в админку" }),
         ...(isLiveAdmin ? [] : [field("Адрес сервера", url)]),
-        field("Ключ администратора", key),
-        err,
-        go1,
+        tabs, fields, err, go1,
         el("p", { class: "ad-muted", text: isLiveAdmin
-          ? "Ключ запоминается в этом браузере. На чужом компьютере после работы нажмите «Выйти»."
-          : "Ключ хранится на этом компьютере в зашифрованном виде и не передаётся странице." }),
+          ? "Вход запоминается в этом браузере. На чужом компьютере после работы нажмите «Выйти»."
+          : "Ключ или вход сотрудника хранится на этом компьютере в зашифрованном виде." }),
       ]),
     ]),
   );
-  key.addEventListener("keydown", (e) => (e as KeyboardEvent).key === "Enter" && go1.click());
-  (serverUrl || isLiveAdmin ? key : url).focus();
+  for (const i of [pass, key]) i.addEventListener("keydown", (e) => (e as KeyboardEvent).key === "Enter" && go1.click());
+  paint();
 }
 
 let waitingConnect = false;
@@ -998,10 +1169,14 @@ let callTimer: number | undefined;
 async function enter(): Promise<void> {
   const r = await api<Stats>("GET", "/api/admin/stats");
   if (r.status !== 200) {
-    showConnect(r.status === 401 ? "Неверный ключ администратора" : "Сервер недоступен, проверьте адрес");
+    showConnect(r.status === 401 ? "Вход устарел или ключ неверный: войдите снова" : "Сервер недоступен, проверьте адрес");
     return;
   }
   serverLabel.textContent = serverUrl;
+  const who = await api<{ name: string; role: string }>("GET", "/api/admin/me");
+  me = who.status === 200 ? who.data : { name: "", role: "owner" };
+  whoLabel.textContent = me.name ? `${me.name} · ${me.role === "owner" ? "владелец" : "кассир"}` : "";
+  if (me.role !== "owner" && OWNER_VIEWS.has(current)) current = "pcs";
   app.replaceChildren(shell);
   document.body.append(callBar);
   go(current);

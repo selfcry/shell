@@ -27,3 +27,17 @@ export function isNight(date = new Date()): boolean {
   const h = date.getHours();
   return h >= 22 || h < 8;
 }
+
+/** Окно тарифа from→to (может переходить через полночь). null — тариф круглосуточный. */
+export function tariffWindow(p: { nightOnly?: boolean; fromHour?: number | null; toHour?: number | null }): [number, number] | null {
+  if (p.fromHour != null && p.toHour != null) return [p.fromHour, p.toHour];
+  return p.nightOnly ? [22, 8] : null;
+}
+
+export function inWindow(w: [number, number] | null, date = new Date()): boolean {
+  if (!w) return true;
+  const h = date.getHours();
+  return w[0] < w[1] ? h >= w[0] && h < w[1] : h >= w[0] || h < w[1];
+}
+
+export const windowText = (w: [number, number]) => `${String(w[0]).padStart(2, "0")}:00 – ${String(w[1]).padStart(2, "0")}:00`;
