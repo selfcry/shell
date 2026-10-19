@@ -1,0 +1,38 @@
+# Сайт с личным кабинетом гостя (копия mirage-ptg.ru + /cabinet), Next.js standalone на 127.0.0.1:3100.
+# Установка: deploy/deploy-vds.sh (кладёт сборку в /opt/clubshell-web и этот файл в /etc/systemd/system/)
+[Unit]
+Description=ClubShell guest cabinet (Next.js)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Service]
+User=clubshell
+Group=clubshell
+UMask=0077
+WorkingDirectory=/opt/clubshell-web
+ExecStart=/usr/bin/node /opt/clubshell-web/server.js
+Restart=always
+RestartSec=2
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+Environment=NEXT_TELEMETRY_DISABLED=1
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

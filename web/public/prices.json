@@ -1,0 +1,32 @@
+{
+  "currency": "RUB",
+  "updated": "2026-07-29",
+  "city": "Пятигорск",
+  "clubs": [
+    {
+      "id": "mirage-pro",
+      "name": "Мираж PRO",
+      "url": "https://mirage-ptg.ru/clubs/mirage-pro",
+      "address": "ул. Панагюриште, 4, Пятигорск, 357532",
+      "phone": "+7 (905) 444-60-95",
+      "zones": [
+        { "name": "ARENA", "hour": 140, "night": 550 },
+        { "name": "COMFORT", "hour": 160, "night": 600 },
+        { "name": "BOOTCAMP", "hour": 240, "night": 800 },
+        { "name": "DUO VIP", "hour": 270, "night": 900 }
+      ]
+    },
+    {
+      "id": "mirage",
+      "name": "Мираж",
+      "url": "https://mirage-ptg.ru/clubs/mirage",
+      "address": "Октябрьская ул., 46, Пятигорск, 357502",
+      "phone": "+7 (905) 499-00-95",
+      "zones": [
+        { "name": "ARENA", "hour": 120, "night": 500 },
+        { "name": "COMFORT", "hour": 140, "night": 600 },
+        { "name": "SQUAD CAMP", "hour": 170, "night": 700 }
+      ]
+    }
+  ]
+}

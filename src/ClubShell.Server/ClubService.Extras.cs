@@ -59,7 +59,7 @@ public sealed partial class ClubService
 
     public sealed record ShiftReport(ShiftInfo Shift, int TopupCash, int TopupCard, int TopupSbp, int TopupOther, int Charges, int ChargesCash,
         int SessionRevenue, int Sessions, int BonusSpent, int NewGuests, int CashExpected, int? CashDiff,
-        int BarCash, int BarCard, int BarSbp, int BarBalance);
+        int BarCash, int BarCard, int BarSbp, int BarBalance, int TopupOnline);
 
     public ShiftReport? ShiftReportOf(long shiftId)
     {
@@ -73,6 +73,7 @@ public sealed partial class ClubService
         var topCard = Sum("shift_id = $s AND kind = 'topup' AND method = 'card'", p);
         var topSbp = Sum("shift_id = $s AND kind = 'topup' AND method = 'sbp'", p);
         var topOther = Sum("shift_id = $s AND kind = 'topup' AND method IS NULL", p);
+        var topOnline = Sum("shift_id = $s AND kind = 'topup' AND method = 'online'", p);
         var charges = -Sum("shift_id = $s AND kind = 'charge'", p);
         var chargesCash = -Sum("shift_id = $s AND kind = 'charge' AND method = 'cash'", p); // возврат наличными
         var revenue = -Sum("shift_id = $s AND kind = 'session'", p);
@@ -82,7 +83,7 @@ public sealed partial class ClubService
         var bar = ShopTotals(shiftId);
         var expected = sh.CashOpen + topCash - chargesCash + bar.cash;
         return new ShiftReport(sh, topCash, topCard, topSbp, topOther, charges, chargesCash, revenue, sessions, bonusSpent, newGuests, expected,
-            sh.CashClose is { } counted ? counted - expected : null, bar.cash, bar.card, bar.sbp, bar.balance);
+            sh.CashClose is { } counted ? counted - expected : null, bar.cash, bar.card, bar.sbp, bar.balance, topOnline);
     }
 
     public List<ShiftInfo> Shifts(int limit = 60)
@@ -98,7 +99,7 @@ public sealed partial class ClubService
         return $"""
             🧾 Смена #{r.Shift.Id} закрыта · {r.Shift.Cashier}
             {T(r.Shift.Opened)} — {(r.Shift.Closed is { } cl ? T(cl) : "сейчас")}
-            Пополнения: наличные {r.TopupCash} ₽, карта {r.TopupCard} ₽, СБП {r.TopupSbp} ₽{(r.TopupOther > 0 ? $", прочее {r.TopupOther} ₽" : "")}
+            Пополнения: наличные {r.TopupCash} ₽, карта {r.TopupCard} ₽, СБП {r.TopupSbp} ₽, онлайн {r.TopupOnline} ₽{(r.TopupOther > 0 ? $", прочее {r.TopupOther} ₽" : "")}
             Списания: {r.Charges} ₽
             Бар: наличные {r.BarCash} ₽, карта {r.BarCard} ₽, СБП {r.BarSbp} ₽, с баланса {r.BarBalance} ₽
             Выручка за время: {r.SessionRevenue} ₽ ({r.Sessions} сеансов), бонусами оплачено {r.BonusSpent} ₽

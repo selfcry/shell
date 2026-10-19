@@ -41,6 +41,7 @@ builder.Services.AddSingleton(club);
 builder.Services.AddSingleton(tz);
 builder.Services.AddSingleton<PcHub>();
 builder.Services.AddSingleton<Telegram>();
+builder.Services.AddSingleton<YooKassa>();
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -246,6 +247,85 @@ app.Map("/ws/pc", async (HttpContext ctx, PcHub hub) =>
     using var socket = await ctx.WebSockets.AcceptWebSocketAsync();
     club.Touch(p.Id);
     await hub.RunAsync(p.Id, socket, () => club.Touch(p.Id), ctx.RequestAborted);
+});
+
+// ======================= кабинет гостя (cryvx.ru) =======================
+var guestApi = app.MapGroup("/api/guest");
+CabinetGuest? GuestOf(HttpContext ctx) => club.GuestByToken(ctx.Request.Headers["X-Guest-Token"].FirstOrDefault());
+object GuestDto(CabinetGuest g) => new { login = g.Login, balance = g.Balance, bonus = g.Bonus, phone = g.Phone, birth = g.Birth, loyalty = club.Loyalty(g.Id) };
+
+guestApi.MapPost("/register", (WebRegisterReq req, HttpContext ctx) =>
+{
+    var (token, error) = club.RegisterWeb(ClientIp(ctx), req.Login, req.Password, req.Birth, req.Phone);
+    return token is null ? Results.Ok(new { ok = false, error }) : Results.Ok(new { ok = true, token });
+});
+guestApi.MapPost("/login", (WebLoginReq req, HttpContext ctx) =>
+{
+    var (token, error) = club.LoginWeb(ClientIp(ctx), req.Login, req.Password);
+    return token is null ? Results.Ok(new { ok = false, error }) : Results.Ok(new { ok = true, token });
+});
+guestApi.MapPost("/logout", (HttpContext ctx) =>
+{
+    if (ctx.Request.Headers["X-Guest-Token"].FirstOrDefault() is { } t) club.LogoutGuest(t);
+    return Results.Ok(new { ok = true });
+});
+guestApi.MapGet("/me", (HttpContext ctx) => GuestOf(ctx) is { } g ? Results.Ok(GuestDto(g)) : Unauthorized("Войдите"));
+guestApi.MapGet("/history", (HttpContext ctx) => GuestOf(ctx) is { } g ? Results.Ok(club.Transactions(g.Id).Take(50)) : Unauthorized("Войдите"));
+guestApi.MapPost("/password", (WebPasswordReq req, HttpContext ctx) =>
+{
+    if (GuestOf(ctx) is not { } g) return Unauthorized("Войдите");
+    var r = club.ChangePasswordWeb(g.Id, req.OldPassword, req.NewPassword);
+    return Results.Ok(new { ok = r.Ok, error = r.Error });
+});
+guestApi.MapPost("/promo", (WebPromoReq req, HttpContext ctx) =>
+{
+    if (GuestOf(ctx) is not { } g) return Unauthorized("Войдите");
+    var (r, bonus) = club.RedeemPromoWeb(g.Id, req.Code);
+    return Results.Ok(new { ok = r.Ok, error = r.Error, bonus });
+});
+// тарифы и зоны клуба (для страницы брони и цен) — без входа
+guestApi.MapGet("/club", () => Results.Ok(new
+{
+    zones = club.Zones(),
+    tariffs = club.Tariffs(null).Select(t => new { id = t.Id, name = t.Name, minutes = t.Minutes, price = t.Price, zone = t.Zone, fromHour = t.Window?.from, toHour = t.Window?.to }),
+}));
+guestApi.MapGet("/free", (string? zone, long starts, int minutes) => Results.Ok(club.FreePcs(zone, starts, Math.Clamp(minutes, 60, 720))));
+guestApi.MapGet("/bookings", (HttpContext ctx) => GuestOf(ctx) is { } g ? Results.Ok(club.GuestBookings(g.Id)) : Unauthorized("Войдите"));
+guestApi.MapPost("/bookings", (WebBookingReq req, HttpContext ctx) =>
+{
+    if (GuestOf(ctx) is not { } g) return Unauthorized("Войдите");
+    var (r, b) = club.BookWeb(g, req.PcId, req.Starts, req.Minutes);
+    return Results.Ok(new { ok = r.Ok, error = r.Error, booking = b });
+});
+guestApi.MapDelete("/bookings/{id:long}", (long id, HttpContext ctx) =>
+    GuestOf(ctx) is { } g ? Results.Ok(new { ok = club.CancelGuestBooking(g.Id, id) }) : Unauthorized("Войдите"));
+// онлайн-пополнение
+guestApi.MapGet("/pay/available", (YooKassa yk) => Results.Ok(new { available = yk.Configured }));
+guestApi.MapPost("/pay", async (WebPayReq req, HttpContext ctx, YooKassa yk) =>
+{
+    if (GuestOf(ctx) is not { } g) return Unauthorized("Войдите");
+    var origin = $"https://{ctx.Request.Host}";
+    var (url, error) = await yk.CreateAsync(g, req.Amount, origin + "/cabinet?paid=1");
+    return Results.Ok(new { ok = url is not null, url, error });
+});
+guestApi.MapGet("/payments", async (HttpContext ctx, YooKassa yk) =>
+{
+    if (GuestOf(ctx) is not { } g) return Unauthorized("Войдите");
+    var list = club.GuestPayments(g.Id);
+    foreach (var p in list.Where(p => p.Status == "pending" && Db.Now() - p.Created < 86400).Take(3)) await yk.SyncAsync(p.Id); // вернулся с оплаты — проверяем
+    return Results.Ok(club.GuestPayments(g.Id));
+});
+// уведомление ЮKassa: тело не проверяем, а сами спрашиваем статус платежа по его id
+app.MapPost("/api/guest/pay/notify", async (HttpContext ctx, YooKassa yk) =>
+{
+    try
+    {
+        using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body);
+        if (doc.RootElement.TryGetProperty("object", out var o) && o.TryGetProperty("id", out var id) && id.GetString() is { Length: > 0 and < 64 } pid)
+            await yk.SyncAsync(pid);
+    }
+    catch (Exception) { /* мусор */ }
+    return Results.Ok();
 });
 
 // ======================= админ =======================
@@ -530,6 +610,15 @@ admin.MapGet("/calls", () => Results.Ok(club.Calls()));
 admin.MapPost("/calls/{pcId:long}/ack", (long pcId) => Results.Ok(new { ok = club.AckCall(pcId) }));
 
 // ---- настройки: Telegram ----
+admin.MapGet("/settings/yookassa", (YooKassa yk) => Results.Ok(new { configured = yk.Configured, shopId = club.Setting("yk_shop"), receipt = club.Setting("yk_receipt") == "1", vat = club.Setting("yk_vat") }));
+admin.MapPut("/settings/yookassa", (YooKassaReq req) =>
+{
+    if (req.ShopId is not null) club.SetSetting("yk_shop", req.ShopId.Trim());
+    if (!string.IsNullOrWhiteSpace(req.Secret)) club.SetSetting("yk_secret", req.Secret.Trim());
+    if (req.Receipt is not null) club.SetSetting("yk_receipt", req.Receipt.Value ? "1" : null);
+    if (req.Vat is not null) club.SetSetting("yk_vat", req.Vat.Value.ToString());
+    return Results.Ok(new { ok = true });
+});
 admin.MapGet("/settings/telegram", (Telegram tg) => Results.Ok(new { configured = tg.Configured, chat = club.Setting("tg_chat") }));
 admin.MapPut("/settings/telegram", (TelegramReq req) =>
 {

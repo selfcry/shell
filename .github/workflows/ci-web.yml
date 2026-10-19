@@ -1,0 +1,28 @@
+name: "Проверка сайта с кабинетом (web)"
+
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/ci-web.yml']
+  pull_request:
+    paths: ['web/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - working-directory: web
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npx next build --webpack

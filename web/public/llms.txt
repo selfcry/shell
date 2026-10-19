@@ -1,0 +1,70 @@
+# Mirage PRO — компьютерные клубы в Пятигорске
+# Сайт: https://mirage-ptg.ru
+# Язык: русский
+
+> Сеть киберклубов Мираж PRO и Мираж в Пятигорске: игровые ПК, PlayStation 5, ночные тарифы, работа круглосуточно.
+
+## О сети
+
+- Название: Мираж PRO
+- Город: Пятигорск, Россия
+- Локаций: 2
+- ПК: 76
+- PlayStation 5: 7
+- Режим: круглосуточно, без выходных
+- Интернет: >1 Гбит/с
+
+## NAP — Мираж PRO
+
+- Название: Компьютерный клуб Мираж PRO
+- Адрес: ул. Панагюриште, 4, Пятигорск, 357532
+- Телефон: +7 (905) 444-60-95
+- Email: mirage_pro26@mail.ru
+- Карта: https://yandex.ru/maps/org/mirazh_pro/133093405689/
+- Страница: https://mirage-ptg.ru/clubs/mirage-pro
+- Рейтинг: 4.9 (28 оценок, Яндекс Карты)
+
+## NAP — Мираж
+
+- Название: Компьютерный клуб Мираж
+- Адрес: Октябрьская ул., 46, Пятигорск, 357502
+- Телефон: +7 (905) 499-00-95
+- Email: mirage_cyber26@mail.ru
+- Карта: https://yandex.ru/maps/org/mirazh/181089479974/
+- Страница: https://mirage-ptg.ru/clubs/mirage
+- Рейтинг: 5.0 (324 оценки, Яндекс Карты)
+
+## Основные страницы
+
+- https://mirage-ptg.ru/ — главная
+- https://mirage-ptg.ru/kontakty — контакты обоих клубов
+- https://mirage-ptg.ru/bronirovanie — как забронировать ПК / PS5
+- https://mirage-ptg.ru/prices — цены и тарифы
+- https://mirage-ptg.ru/faq — частые вопросы
+- https://mirage-ptg.ru/clubs/mirage-pro — клуб Мираж PRO
+- https://mirage-ptg.ru/clubs/mirage — клуб Мираж
+- https://mirage-ptg.ru/mirage-vs-mirage-pro — сравнение клубов
+
+## SEO-лендинги (Пятигорск)
+
+- https://mirage-ptg.ru/kompyuternyy-klub-pyatigorsk — компьютерный клуб
+- https://mirage-ptg.ru/kiberklub-pyatigorsk — киберклуб
+- https://mirage-ptg.ru/igrovoy-klub-pyatigorsk — игровой клуб
+- https://mirage-ptg.ru/nochnoy-tarif-pyatigorsk — ночной тариф (22:00–8:00)
+- https://mirage-ptg.ru/ps5-pyatigorsk — PlayStation 5
+
+## Статьи
+
+- https://mirage-ptg.ru/blog — все статьи
+- https://mirage-ptg.ru/blog/ceny-kompyuternyh-klubov-pyatigorsk — цены компьютерных клубов: как разобраться в тарифах
+- https://mirage-ptg.ru/blog/kakoy-ping-nuzhen-dlya-igr — какой пинг нужен для игр и почему в клубе он стабильнее
+- https://mirage-ptg.ru/blog/svoi-devaysy-v-kompyuternom-klube — свои девайсы в клубе: что можно принести и как подключить
+- https://mirage-ptg.ru/blog/kak-sohranit-progress-v-kompyuternom-klube — как сохранить прогресс: Steam Cloud, аккаунты, Steam Guard
+- https://mirage-ptg.ru/blog/ergonomika-dlya-geyminga — эргономика для гейминга
+
+## Машиночитаемые данные
+
+- https://mirage-ptg.ru/llms.txt — краткое описание для AI
+- https://mirage-ptg.ru/prices.json — тарифы клубов
+- https://mirage-ptg.ru/sitemap.xml — карта сайта
+

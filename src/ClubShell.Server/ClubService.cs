@@ -511,13 +511,7 @@ public sealed partial class ClubService
     public (bool ok, string? error, Guest? guest, List<Tariff>? tariffs) Register(Pc pc, string login, string password, string? birth)
     {
         login = (login ?? "").Trim();
-        if (!LoginRx.IsMatch(login)) return (false, "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание", null, null);
-        if (password is null || password.Length < 6 || password.Length > 64) return (false, "Пароль должен быть от 6 до 64 символов", null, null);
-        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return (false, "Пароль не должен совпадать с логином", null, null);
-        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out var born)) return (false, "Укажите дату рождения", null, null);
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz).DateTime);
-        var age = today.Year - born.Year - (today < born.AddYears(today.Year - born.Year) ? 1 : 0);
-        if (age < 6 || age > 100) return (false, "Проверьте дату рождения", null, null);
+        if (ValidateRegistration(login, password, birth, out var born) is { } bad) return (false, bad, null, null);
         if (!RegistrationAllowed(pc.Id)) return (false, "Слишком много регистраций, обратитесь к администратору", null, null);
 
         Result created;
@@ -530,6 +524,20 @@ public sealed partial class ClubService
         var g = Db.QueryOne(c, "SELECT id, login, balance, birth, banned, created FROM guests WHERE login = $l", ReadGuest, ("$l", login));
         if (g is not null) { _guestPc[g.Id] = pc.Id; BindLogin(pc.Id, g.Id, Db.Now() + 30 * 60); }
         return (true, null, g, Tariffs(pc.Zone));
+    }
+
+    /// <summary>Общие правила регистрации (на ПК и в веб-кабинете). null — всё в порядке.</summary>
+    private string? ValidateRegistration(string login, string? password, string? birth, out DateOnly born)
+    {
+        born = default;
+        if (!LoginRx.IsMatch(login)) return "Логин: 3–24 символа, буквы, цифры, точка, дефис, подчёркивание";
+        if (password is null || password.Length < 6 || password.Length > 64) return "Пароль должен быть от 6 до 64 символов";
+        if (password.Equals(login, StringComparison.OrdinalIgnoreCase)) return "Пароль не должен совпадать с логином";
+        if (!DateOnly.TryParseExact(birth ?? "", "yyyy-MM-dd", out born)) return "Укажите дату рождения";
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, _tz).DateTime);
+        var age = today.Year - born.Year - (today < born.AddYears(today.Year - born.Year) ? 1 : 0);
+        if (age < 6 || age > 100) return "Проверьте дату рождения";
+        return null;
     }
 
     public SessionInfo? ActiveSessionOfPc(long pcId) => _active.GetValueOrDefault(pcId);

@@ -139,6 +139,18 @@ public sealed class Db
               shift_id INTEGER);
             CREATE INDEX IF NOT EXISTS ix_orders_status ON orders(status) WHERE status = 'new';
             CREATE INDEX IF NOT EXISTS ix_orders_shift ON orders(shift_id);
+            CREATE TABLE IF NOT EXISTS guest_tokens (
+              hash TEXT PRIMARY KEY,
+              guest_id INTEGER NOT NULL REFERENCES guests(id),
+              created INTEGER NOT NULL,
+              expires INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS payments (
+              id TEXT PRIMARY KEY,
+              guest_id INTEGER NOT NULL REFERENCES guests(id),
+              amount INTEGER NOT NULL,
+              status TEXT NOT NULL,
+              created INTEGER NOT NULL,
+              paid INTEGER);
             CREATE TABLE IF NOT EXISTS operators (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               login TEXT NOT NULL UNIQUE COLLATE NOCASE,

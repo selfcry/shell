@@ -1,0 +1,35 @@
+{
+  "name": "mirage",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev",
+    "build:plain": "next build --webpack",
+    "build:obf": "MIRAGE_OBF=1 next build --webpack && node scripts/mirage-obf/obfuscate-build.mjs",
+    "build:obf-max": "MIRAGE_OBF=1 MIRAGE_OBF_MAX=1 next build --webpack && node scripts/mirage-obf/obfuscate-build.mjs",
+    "obf": "MIRAGE_OBF=1 node scripts/mirage-obf/obfuscate-build.mjs",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "client-only": "^0.0.1",
+    "next": "^16.2.12",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16.2.12",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.24",
+    "sharp": "0.35.3"
+  }
+}

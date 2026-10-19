@@ -46,3 +46,12 @@ public record PcOrderReq(string Username, List<SaleItem> Items);
 public record OperatorLoginReq(string Login, string Password);
 public record OperatorReq(string Login, string? Name, string Password, string Role);
 public record OperatorUpdateReq(string? Password, bool? Active, string? Role, string? Name);
+
+// кабинет гостя
+public record WebRegisterReq(string Login, string Password, string? Birth, string? Phone);
+public record WebLoginReq(string Login, string Password);
+public record WebPasswordReq(string OldPassword, string NewPassword);
+public record WebBookingReq(long PcId, long Starts, int Minutes);
+public record WebPromoReq(string Code);
+public record WebPayReq(int Amount);
+public record YooKassaReq(string? ShopId, string? Secret, bool? Receipt, int? Vat);
