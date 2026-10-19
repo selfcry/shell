@@ -21,6 +21,7 @@ builder.Services.AddHostedService<CleanupWorker>();
 builder.Services.AddHostedService<GuardianWorker>();
 builder.Services.AddHostedService<HeartbeatWorker>();
 builder.Services.AddHostedService<ServerLinkWorker>();
+builder.Services.AddHostedService<UpdateWorker>();    // автообновление клиента (вне сеанса, с проверкой подписи)
 builder.Services.AddHostedService<SessionEnforcer>();
 
 var host = builder.Build();

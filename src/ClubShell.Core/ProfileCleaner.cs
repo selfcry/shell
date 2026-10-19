@@ -55,6 +55,38 @@ public static class ProfileCleaner
         return new CleanResult(files, dirs, errors, bytes);
     }
 
+    /// <summary>Эталонный реестр гостя (снимок, сделанный harden.ps1 -SaveGolden): лежит в папке службы, гостю недоступен.</summary>
+    public static string GoldenHive => Path.Combine(ShellConfig.Dir, "golden", "NTUSER.DAT");
+
+    /// <summary>
+    /// «Неизменяемый профиль»: вернуть реестр гостя (HKCU) к эталону. Всё, что прошлый гость записал в HKCU —
+    /// автозапуск, своя оболочка (Winlogon\Shell), переменные окружения, пути папок — пропадает.
+    /// Вызывать до входа гостя (файл реестра в это время не занят). Журналы транзакций удаляются, иначе Windows «доиграет» их.
+    /// </summary>
+    public static string? RestoreGoldenHive(string usersRoot, string guestUser)
+    {
+        var refusal = Validate(usersRoot, guestUser, out var profile);
+        if (refusal is not null) return refusal;
+        if (!File.Exists(GoldenHive)) return "нет эталона (harden.ps1 -SaveGolden)";
+        var hive = Path.Combine(profile, "NTUSER.DAT");
+        if (File.Exists(hive) && new FileInfo(hive).Attributes.HasFlag(FileAttributes.ReparsePoint)) return "NTUSER.DAT — ссылка";
+        try
+        {
+            using (File.Open(hive, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None)) { } // занят — гость уже вошёл
+        }
+        catch (IOException) { return "реестр гостя занят: гость вошёл, восстановление после перезагрузки"; }
+        foreach (var f in Directory.EnumerateFiles(profile, "ntuser.dat*", SearchOption.TopDirectoryOnly))
+        {
+            var name = Path.GetFileName(f);
+            if (name.Equals("NTUSER.DAT", StringComparison.OrdinalIgnoreCase)) continue;
+            try { File.SetAttributes(f, FileAttributes.Normal); File.Delete(f); } catch (Exception) { /* занятые журналы оставляем */ }
+        }
+        File.SetAttributes(hive, FileAttributes.Normal);
+        File.Copy(GoldenHive, hive, overwrite: true);
+        File.SetAttributes(hive, FileAttributes.Hidden | FileAttributes.System);
+        return null;
+    }
+
     private static string? Validate(string usersRoot, string guestUser, out string profile)
     {
         profile = "";

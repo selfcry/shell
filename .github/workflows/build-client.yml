@@ -1,0 +1,120 @@
+name: "Сборка: пакет клиента для ПК и автообновления (служба + оболочка)"
+
+# Один zip со службой и оболочкой (раскладка как на ПК: ClubShell.Service.exe + locker\), номер версии 1.0.<номер сборки>.
+# Подпись:
+#  - exe подписываются Authenticode, если в секретах есть сертификат: SIGN_PFX_BASE64 (pfx в base64) и SIGN_PFX_PASSWORD;
+#  - манифест обновления подписывается ключом ECDSA P-256 из секрета UPDATE_SIGNING_KEY (PEM). Без него манифест
+#    не публикуется, и ПК не обновятся — служба принимает только пакеты с верной подписью.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/ClubShell.Locker/**'
+      - 'src/ClubShell.Service/**'
+      - 'src/ClubShell.Core/**'
+      - 'ui/**'
+      - 'scripts/**'
+      - 'Directory.Build.props'
+      - '.github/workflows/build-client.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      HAS_CERT: ${{ secrets.SIGN_PFX_BASE64 != '' }}
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        shell: bash
+        run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/build-ui
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Публикация службы и оболочки
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          dotnet publish src/ClubShell.Service -c Release -r win-x64 --self-contained true -p:Version=$v -o out
+          dotnet publish src/ClubShell.Locker  -c Release -r win-x64 --self-contained true -p:Version=$v -o out/locker
+          Copy-Item scripts/install.ps1, scripts/harden.ps1 out/
+          Set-Content out/version.txt $v
+      - name: Подпись exe (Authenticode), если есть сертификат
+        if: ${{ env.HAS_CERT == 'true' }}
+        env:
+          PFX_B64: ${{ secrets.SIGN_PFX_BASE64 }}
+          PFX_PASS: ${{ secrets.SIGN_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "sign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_B64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          $files = @("out/ClubShell.Service.exe", "out/locker/ClubShell.Locker.exe") + (Get-ChildItem out, out/locker -Filter "ClubShell.*.dll" | ForEach-Object FullName)
+          & $signtool.FullName sign /f $pfx /p $env:PFX_PASS /fd sha256 /tr http://timestamp.digicert.com /td sha256 /d "Мираж PRO ClubShell" @files
+          if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+          Remove-Item $pfx
+      - name: Упаковка
+        shell: pwsh
+        run: Compress-Archive -Path out/* -DestinationPath "ClubShell.Client-win-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client
+          path: ClubShell.Client-win-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: client
+          path: dist
+      - name: Подписанный манифест обновления
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          zip=dist/ClubShell.Client-win-x64.zip
+          sha=$(sha256sum "$zip" | cut -d' ' -f1)
+          size=$(stat -c %s "$zip")
+          tag="client-v$VERSION"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/$tag/ClubShell.Client-win-x64.zip"
+          if [ -z "${UPDATE_SIGNING_KEY:-}" ]; then echo "::warning::Нет секрета UPDATE_SIGNING_KEY — манифест не подписан, ПК не обновятся"; exit 0; fi
+          printf '%s' "$UPDATE_SIGNING_KEY" > key.pem
+          printf '%s\n%s' "$VERSION" "$sha" > msg.txt
+          sig=$(openssl dgst -sha256 -sign key.pem msg.txt | base64 -w0)
+          rm key.pem
+          jq -n --arg v "$VERSION" --arg u "$url" --arg s "$sha" --arg g "$sig" --argjson z "$size" \
+            '{version:$v, url:$u, sha256:$s, signature:$g, size:$z}' > dist/client-manifest.json
+          cat dist/client-manifest.json
+      - name: Публикация релиза версии и обновление «latest»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="client-v$VERSION"
+          files=(dist/ClubShell.Client-win-x64.zip)
+          [ -f dist/client-manifest.json ] && files+=(dist/client-manifest.json)
+          # Полный (не pre-) релиз: адрес releases/latest/download/client-manifest.json ведёт на самый новый из них —
+          # его и читает сервер клуба (UpdateFeed.DefaultUrl).
+          gh release create "$tag" "${files[@]}" --title "Клиент $VERSION" --latest \
+            --notes "Пакет для ПК клуба (служба + оболочка) из коммита ${GITHUB_SHA::7}. Ставится install.ps1, дальше обновляется сам." --target "$GITHUB_SHA"

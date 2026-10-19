@@ -42,6 +42,7 @@ builder.Services.AddSingleton(tz);
 builder.Services.AddSingleton<PcHub>();
 builder.Services.AddSingleton<Telegram>();
 builder.Services.AddSingleton<YooKassa>();
+builder.Services.AddSingleton<UpdateFeed>();
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
 builder.Services.AddResponseCompression();
@@ -230,10 +231,18 @@ pc.MapPost("/order", (HttpContext ctx, PcOrderReq req, Telegram tg) =>
     return Results.Ok(new { ok = r.Ok, error = r.Error, orderId = order?.Id, total = order?.Total, balance = r.Ok ? club.BalanceOfLogin(req.Username) : (int?)null });
 });
 
-pc.MapPost("/heartbeat", (HttpContext ctx, HeartbeatReq req) =>
+pc.MapGet("/update", async (HttpContext ctx, string? version, UpdateFeed feed) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    var m = await feed.ForPcAsync(p, version ?? "0.0.0");
+    return m is null ? Results.NoContent() : Results.Ok(m);
+});
+
+pc.MapPost("/heartbeat", (HttpContext ctx, HeartbeatReq req, UpdateFeed feed) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     club.Touch(p.Id);
+    feed.SeenVersion(p.Id, req.Version);
     var s = club.ActiveSessionOfPc(p.Id);
     // Сервер сообщает остаток времени: клиент сверяет свой таймер с серверным.
     return Results.Ok(new { ok = true, time = Db.Now(), session = s is null ? null : new { id = s.Id, user = s.Guest, remainingSec = Math.Max(0, s.Ends - Db.Now()) } });
@@ -412,7 +421,7 @@ admin.MapDelete("/blocked/{id:long}", (long id) => catalog.RemoveBlocked(id) ? R
 
 admin.MapGet("/stats", () => Results.Ok(club.Stats()));
 
-admin.MapGet("/pcs", (PcHub hub) =>
+admin.MapGet("/pcs", (PcHub hub, UpdateFeed feed) =>
 {
     var now = Db.Now();
     var active = club.Sessions(activeOnly: true).ToDictionary(s => s.PcId);
@@ -426,6 +435,7 @@ admin.MapGet("/pcs", (PcHub hub) =>
         session = active.TryGetValue(p.Id, out var s) ? new { id = s.Id, guest = s.Guest, tariff = s.TariffId, started = s.Started, remainingSec = Math.Max(0, s.Ends - now) } : null,
         booking = bookings.TryGetValue(p.Id, out var b) ? new { id = b.Id, guest = b.Guest, starts = b.Starts, ends = b.Ends } : null,
         call = calls.TryGetValue(p.Id, out var call) ? new { ts = call.Ts, guest = call.Guest } : null,
+        version = feed.VersionOf(p.Id),
     }));
 });
 
@@ -610,6 +620,19 @@ admin.MapGet("/calls", () => Results.Ok(club.Calls()));
 admin.MapPost("/calls/{pcId:long}/ack", (long pcId) => Results.Ok(new { ok = club.AckCall(pcId) }));
 
 // ---- настройки: Telegram ----
+admin.MapGet("/settings/updates", async (UpdateFeed feed, bool? refresh) =>
+{
+    var (m, error) = await feed.LatestAsync(force: refresh == true);
+    return Results.Ok(new { enabled = feed.Enabled, mode = feed.TestOnly ? "test" : "all", ring = feed.Ring, url = feed.Url, latest = m?.Version, error });
+});
+admin.MapPut("/settings/updates", (UpdateSettingsReq req) =>
+{
+    if (req.Enabled is not null) club.SetSetting("upd_enabled", req.Enabled.Value ? "1" : null);
+    if (req.Mode is "test" or "all") club.SetSetting("upd_mode", req.Mode);
+    if (req.Ring is not null) club.SetSetting("upd_ring", req.Ring.Trim());
+    if (req.Url is not null) club.SetSetting("upd_url", req.Url.Trim().StartsWith("https://") ? req.Url.Trim() : null);
+    return Results.Ok(new { ok = true });
+});
 admin.MapGet("/settings/yookassa", (YooKassa yk) => Results.Ok(new { configured = yk.Configured, shopId = club.Setting("yk_shop"), receipt = club.Setting("yk_receipt") == "1", vat = club.Setting("yk_vat") }));
 admin.MapPut("/settings/yookassa", (YooKassaReq req) =>
 {

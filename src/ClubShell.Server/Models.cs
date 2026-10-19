@@ -15,7 +15,7 @@ public record LoginReq(string Username, string Password);
 public record RegisterReq(string Username, string Password, string? Birth);
 public record StartReq(string Username, string PackageId);
 public record StopReq(string Username);
-public record HeartbeatReq(string? Username);
+public record HeartbeatReq(string? Username, string? Version = null);
 
 // админ
 public record NewPcReq(string Name, string? Zone);
@@ -55,3 +55,4 @@ public record WebBookingReq(long PcId, long Starts, int Minutes);
 public record WebPromoReq(string Code);
 public record WebPayReq(int Amount);
 public record YooKassaReq(string? ShopId, string? Secret, bool? Receipt, int? Vat);
+public record UpdateSettingsReq(bool? Enabled, string? Mode, string? Ring, string? Url);

@@ -20,6 +20,13 @@ public sealed class CleanupWorker : IHostedService
         {
             var usersRoot = Path.Combine(Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows)) ?? @"C:\", "Users");
             var dirs = _cfg.WipeDirs.Count > 0 ? _cfg.WipeDirs : ProfileCleaner.DefaultDirs.ToList();
+            // сначала реестр (неизменяемый профиль), потом файлы
+            if (_cfg.RestoreGoldenHive)
+            {
+                var hiveRefusal = ProfileCleaner.RestoreGoldenHive(usersRoot, _cfg.GuestUser);
+                if (hiveRefusal is null) _log.LogInformation("Реестр гостя возвращён к эталону");
+                else _log.LogWarning("Реестр гостя не восстановлен: {Reason}", hiveRefusal);
+            }
             var result = ProfileCleaner.Clean(usersRoot, _cfg.GuestUser, dirs, out var refusal);
             if (result is null) _log.LogWarning("Очистка профиля гостя не выполнена: {Reason}", refusal);
             else _log.LogInformation("Профиль гостя очищен: файлов {Files}, папок {Dirs}, {Mb} МБ, ошибок {Errors}",

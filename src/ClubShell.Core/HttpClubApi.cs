@@ -65,7 +65,7 @@ public sealed class HttpClubApi : IClubApi, IDisposable
 
     public async Task<HeartbeatInfo?> HeartbeatAsync(string pcId, string? username)
     {
-        var r = await PostAsync<HeartbeatDto>("api/pc/heartbeat", new { username });
+        var r = await PostAsync<HeartbeatDto>("api/pc/heartbeat", new { username, version = UpdateVerifier.CurrentVersion });
         return r.Session is { } s ? new HeartbeatInfo(s.RemainingSec > 0, s.RemainingSec, s.User) : new HeartbeatInfo(false, 0, null);
     }
 
@@ -75,6 +75,14 @@ public sealed class HttpClubApi : IClubApi, IDisposable
     {
         var r = await PostAsync<PromoDto>("api/pc/promo", new { username, code });
         return new PromoResult(r.Ok, r.Error, r.Bonus);
+    }
+
+    public async Task<UpdateManifest?> GetUpdateAsync(string currentVersion)
+    {
+        using var resp = await _http.GetAsync("api/pc/update?version=" + Uri.EscapeDataString(currentVersion));
+        if (resp.StatusCode == System.Net.HttpStatusCode.NoContent) return null;
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<UpdateManifest>(Json);
     }
 
     public async Task<List<ShopItem>> GetShopAsync()

@@ -17,6 +17,7 @@ interface PcRow {
   session: null | { id: number; guest: string; tariff: string; started: number; remainingSec: number };
   booking?: null | { id: number; guest: string; starts: number; ends: number };
   call?: null | { ts: number; guest: string | null };
+  version?: string | null;
 }
 interface GuestRow { id: number; login: string; balance: number; birth: string | null; banned: boolean; created: number; bonus?: number; phone?: string | null }
 interface TariffRow { id: string; name: string; minutes: number; price: number; nightOnly: boolean; zone: string; active: boolean; sort: number; fromHour?: number | null; toHour?: number | null }
@@ -275,6 +276,7 @@ async function viewPcs(): Promise<HTMLElement | null> {
       el("div", { class: "ad-pc-guest", text: p.session ? p.session.guest : p.online ? "Свободен" : "Не в сети" }),
       time,
       p.booking ? el("div", { class: "ad-pc-book", text: `бронь ${hhmm(p.booking.starts)}–${hhmm(p.booking.ends)} · ${p.booking.guest}` }) : el("span"),
+      p.version ? el("div", { class: "ad-pc-ver", text: `v${p.version}` }) : el("span"),
     ]);
     c.addEventListener("click", () => openPc(p));
     return c;
@@ -354,13 +356,13 @@ function addPc(): void {
 
 function showToken(name: string, token: string): void {
   const ps = (v: string) => `'${v.replace(/'/g, "''")}'`; // строка PowerShell в одинарных кавычках: без подстановок
-  const command = `.\\scripts\\install.ps1 -PcToken ${ps(token)} -PcName ${ps(name)} -ServerUrl ${ps(serverUrl)}`;
+  const command = `.\\install.ps1 -PcToken ${ps(token)} -PcName ${ps(name)} -ServerUrl ${ps(serverUrl)}`;
   const snippet = `"ServerUrl": "${serverUrl}",\n"PcToken": "${token}"`;
   const copyBtn = (label: string, text: string, cls = "") => button(label, cls, async () => {
     try { await navigator.clipboard.writeText(text); toast("Скопировано"); } catch { toast("Не удалось скопировать: выделите текст вручную", "error"); }
   });
   modal(`Токен для ${name}`, [
-    el("p", { class: "ad-text", text: "Токен показывается один раз: на сервере хранится только его хеш. На этом компьютере в папке с программой запустите PowerShell от администратора и выполните команду:" }),
+    el("p", { class: "ad-text", text: "Токен показывается один раз: на сервере хранится только его хеш. Скачайте на этот компьютер ClubShell.Client-win-x64.zip из релизов GitHub (github.com/selfcry/shell/releases), распакуйте, в этой папке запустите PowerShell от администратора и выполните команду. Дальше программа обновляется сама." }),
     el("pre", { class: "ad-code", text: command }),
     el("p", { class: "ad-muted", text: "Если служба уже установлена, можно вместо этого вписать две строки в C:\\ProgramData\\ClubShell\\config.json и перезапустить службу ClubShell:" }),
     el("pre", { class: "ad-code", text: snippet }),
@@ -912,12 +914,45 @@ async function viewAnalytics(): Promise<HTMLElement | null> {
 
 // ---------- настройки ----------
 async function viewSettings(): Promise<HTMLElement | null> {
-  const r = await api<{ configured: boolean; chat: string | null }>("GET", "/api/admin/settings/telegram");
+  const [r, up, yk] = await Promise.all([
+    api<{ configured: boolean; chat: string | null }>("GET", "/api/admin/settings/telegram"),
+    api<{ enabled: boolean; mode: string; ring: string; url: string; latest: string | null; error: string | null }>("GET", "/api/admin/settings/updates"),
+    api<{ configured: boolean; shopId: string | null; receipt: boolean; vat: string | null }>("GET", "/api/admin/settings/yookassa"),
+  ]);
   if (r.status !== 200) return connectionProblem(r.status);
+  // ---- обновления клиента ----
+  const updOn = el("input", { attrs: { type: "checkbox" } });
+  updOn.checked = up.data.enabled;
+  const updMode = el("select", { class: "ad-input" }, [["test", "Только тестовые ПК (сначала проверить)"], ["all", "Все ПК клуба"]].map(([v, t]) => el("option", { attrs: { value: v, ...(up.data.mode === v ? { selected: "" } : {}) }, text: t })));
+  const updRing = textInput(up.data.ring ?? "", "text", "PC-01, PC-02");
+  const updates = el("section", { class: "ad-card" }, [
+    el("h2", { text: "Обновления программ на ПК" }),
+    el("p", { class: "ad-muted", text: `Последняя версия в GitHub: ${up.data.latest ?? "—"}${up.data.error ? ` (${up.data.error})` : ""}. Служба на ПК скачивает её только вне сеанса, проверяет подпись и при сбое возвращается на прошлую версию. Версия каждого ПК видна на карточке в «Зале».` }),
+    el("label", { class: "ad-check" }, [updOn, el("span", { text: "Обновлять автоматически" })]),
+    field("Кому", updMode), field("Тестовые ПК (имена через запятую)", updRing),
+    el("div", { class: "ad-btnrow" }, [
+      button("Сохранить", "primary", () => run(api("PUT", "/api/admin/settings/updates", { enabled: updOn.checked, mode: (updMode as HTMLSelectElement).value, ring: updRing.value }), "Сохранено", () => void render())),
+      button("Проверить GitHub", "", async () => { const x = await api<{ latest: string | null; error: string | null }>("GET", "/api/admin/settings/updates?refresh=true"); toast(x.data.latest ? `Последняя версия ${x.data.latest}` : x.data.error ?? "Нет данных", x.data.latest ? "ok" : "error"); }),
+    ]),
+  ]);
+  // ---- онлайн-оплата ----
+  const ykShop = textInput(yk.data.shopId ?? "", "text", "shopId из личного кабинета ЮKassa");
+  const ykSecret = textInput("", "password", yk.data.configured ? "•••••• (сохранён, введите новый, чтобы заменить)" : "Секретный ключ live_… или test_…");
+  const ykReceipt = el("input", { attrs: { type: "checkbox" } });
+  ykReceipt.checked = yk.data.receipt;
+  const payments = el("section", { class: "ad-card" }, [
+    el("h2", { text: "Онлайн-пополнение в личном кабинете (ЮKassa)" }),
+    el("p", { class: "ad-muted", text: `Статус: ${yk.data.configured ? "подключено" : "не подключено — гости видят «пополните на стойке»"}. Нужен договор с ЮKassa. В её кабинете укажите адрес уведомлений https://cryvx.ru/api/guest/pay/notify (событие payment.succeeded). Деньги зачисляются только после того, как сервер сам проверит платёж.` }),
+    field("shopId", ykShop), field("Секретный ключ", ykSecret),
+    el("label", { class: "ad-check" }, [ykReceipt, el("span", { text: "Отправлять чек 54-ФЗ через «Чеки от ЮKassa» (нужен телефон гостя)" })]),
+    button("Сохранить", "primary", () => run(api("PUT", "/api/admin/settings/yookassa", { shopId: ykShop.value.trim(), secret: ykSecret.value.trim() || null, receipt: ykReceipt.checked }), "Сохранено", () => void render())),
+  ]);
   const token = textInput("", "password", r.data.configured ? "•••••• (сохранён, введите новый, чтобы заменить)" : "123456:ABC… от @BotFather");
   const chat = textInput(r.data.chat ?? "", "text", "ID чата, например -1001234567890");
   return el("div", {}, [
     header("Настройки"),
+    updates,
+    payments,
     el("section", { class: "ad-card" }, [
       el("h2", { text: "Уведомления в Telegram" }),
       el("p", { class: "ad-muted", text: "Сюда придут вызовы администратора с ПК и отчёты при закрытии смены. Создайте бота у @BotFather, добавьте его в чат администраторов и укажите ID чата (его покажет, например, @getmyid_bot)." }),

@@ -195,3 +195,4 @@ select.ad-input { appearance: auto; }
 .ad-pay { margin-top: 10px; flex-wrap: wrap; }
 .ad-orders { border-color: rgba(255, 107, 0, 0.6); margin-bottom: 16px; }
 .ad-callitem.order { border-color: #ff9a3c; background: #1a1208; }
+.ad-pc-ver { margin-top: 4px; font-size: 10px; color: var(--muted); opacity: 0.7; }

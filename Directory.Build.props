@@ -1,0 +1,8 @@
+<Project>
+  <!-- Версия всех программ: в CI передаётся -p:Version=1.0.<номер сборки>, локально 1.0.0. По ней служба решает, нужно ли обновляться. -->
+  <PropertyGroup>
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+    <Company>Мираж PRO</Company>
+    <Product>ClubShell</Product>
+  </PropertyGroup>
+</Project>

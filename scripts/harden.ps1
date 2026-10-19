@@ -2,11 +2,15 @@
 # ВАЖНО: сначала проверьте в виртуальной машине и держите отдельную админ-учётку.
 #   .\scripts\harden.ps1 -GuestUser guest              — применить
 #   .\scripts\harden.ps1 -GuestUser guest -Undo        — снять
+#   .\scripts\harden.ps1 -GuestUser guest -SaveGolden  — применить и сохранить эталон реестра гостя:
+#        служба при каждой загрузке возвращает HKCU гостя к этому снимку («неизменяемый профиль»).
+#        Перед этим один раз войдите гостем, настройте всё нужное (язык, мышь, звук) и выйдите из системы.
 # Работает в Windows 11 Home и Pro: используются настройки профиля пользователя, а не групповые политики.
 param(
     [Parameter(Mandatory)] [string]$GuestUser,
     [string]$LockerPath = "C:\Program Files\ClubShell\locker\ClubShell.Locker.exe",
-    [switch]$Undo
+    [switch]$Undo,
+    [switch]$SaveGolden
 )
 $ErrorActionPreference = "Stop"
 
@@ -66,6 +70,20 @@ try {
 finally {
     [gc]::Collect(); [gc]::WaitForPendingFinalizers()
     reg.exe unload $tmp | Out-Null
+}
+
+# Эталон реестра гостя: копия NTUSER.DAT уже с ограничениями выше. Лежит в папке службы — гость её не видит и не меняет.
+if ($SaveGolden -and -not $Undo) {
+    $goldenDir = "C:\ProgramData\ClubShell\golden"
+    New-Item -ItemType Directory -Force $goldenDir | Out-Null
+    icacls $goldenDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+    try { Copy-Item -LiteralPath $hiveFile -Destination (Join-Path $goldenDir "NTUSER.DAT") -Force }
+    catch { throw "Не удалось скопировать NTUSER.DAT: гость должен выйти из системы (или перезагрузите ПК и повторите). $($_.Exception.Message)" }
+    Write-Host "Эталон реестра гостя сохранён: $goldenDir\NTUSER.DAT. При каждой загрузке ПК HKCU гостя возвращается к нему."
+}
+if ($Undo -and (Test-Path "C:\ProgramData\ClubShell\golden\NTUSER.DAT")) {
+    Remove-Item "C:\ProgramData\ClubShell\golden\NTUSER.DAT" -Force
+    Write-Host "Эталон реестра гостя удалён: профиль снова сохраняет изменения."
 }
 
 Write-Host ($(if ($Undo) { "Ограничения сняты." } else { "Ограничения применены для $GuestUser." }))

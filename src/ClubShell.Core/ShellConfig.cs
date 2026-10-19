@@ -34,6 +34,9 @@ public sealed class ShellConfig
     /// <summary>Чистить профиль гостя при загрузке Windows (после перезагрузки в конце сеанса).</summary>
     public bool WipeOnBoot { get; set; } = true;
 
+    /// <summary>Возвращать реестр гостя (NTUSER.DAT) к эталону при каждой загрузке, если эталон сохранён (harden.ps1 -SaveGolden).</summary>
+    public bool RestoreGoldenHive { get; set; } = true;
+
     /// <summary>Подпапки профиля гостя, содержимое которых удаляется. Пусто — берётся список по умолчанию.</summary>
     public List<string> WipeDirs { get; set; } = new();
 
