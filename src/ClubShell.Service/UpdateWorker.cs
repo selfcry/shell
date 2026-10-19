@@ -89,11 +89,14 @@ public sealed class UpdateWorker : BackgroundService
         if (m is null || !UpdateVerifier.IsNewer(m.Version, current)) return;
         if (!UpdateVerifier.SignatureValid(m)) { _log.LogError("Update {Version}: bad signature, ignored", m.Version); return; }
         if (!Uri.TryCreate(m.Url, UriKind.Absolute, out var url) || url.Scheme != "https") { _log.LogError("Update {Version}: url must be https", m.Version); return; }
+        // пакет раздаёт сервер клуба (репозиторий приватный); токен ПК уходит только на свой сервер, не на чужие адреса
+        var serverHost = Uri.TryCreate(_config.ServerUrl, UriKind.Absolute, out var su) ? su.Host : null;
+        var token = string.Equals(url.Host, serverHost, StringComparison.OrdinalIgnoreCase) ? _config.PcToken : null;
 
         _log.LogWarning("Downloading update {Version}", m.Version);
         Directory.CreateDirectory(DownloadDir);
         var zip = Path.Combine(DownloadDir, $"client-{m.Version}.zip");
-        await DownloadAsync(url, zip, stop);
+        await DownloadAsync(url, token, zip, stop);
         var hash = UpdateVerifier.Sha256Of(zip);
         if (!hash.Equals(m.Sha256, StringComparison.OrdinalIgnoreCase)) { File.Delete(zip); _log.LogError("Update {Version}: sha256 mismatch", m.Version); return; }
 
@@ -123,9 +126,11 @@ public sealed class UpdateWorker : BackgroundService
         Restart();
     }
 
-    private static async Task DownloadAsync(Uri url, string file, CancellationToken stop)
+    private static async Task DownloadAsync(Uri url, string? pcToken, string file, CancellationToken stop)
     {
-        using var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, stop);
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        if (pcToken is not null) req.Headers.Add("X-Pc-Token", pcToken);
+        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, stop);
         resp.EnsureSuccessStatusCode();
         if (resp.Content.Headers.ContentLength > MaxPackage) throw new IOException("package too large");
         await using var src = await resp.Content.ReadAsStreamAsync(stop);

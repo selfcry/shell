@@ -16,7 +16,6 @@ export function Header() {
     { href: "/prices", label: "Цены" },
     { href: "/blog", label: "Статьи" },
     { href: "/faq", label: "Вопросы" },
-    { href: "/cabinet", label: "Кабинет" },
   ]
 
   useEffect(() => {
@@ -51,7 +50,7 @@ export function Header() {
           </span>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-1 relative z-10">
+        <nav className="hidden xl:flex items-center gap-1 relative z-10">
           {navLinks.map((link) => {
             const isActive =
               pathname === link.href ||
@@ -64,7 +63,7 @@ export function Header() {
                 key={link.href}
                 href={link.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`motion-nav-link relative px-4 py-2 rounded-xl text-base font-medium transition-all duration-300 ${
+                className={`motion-nav-link relative whitespace-nowrap px-3 xl:px-4 py-2 rounded-xl text-base font-medium transition-all duration-300 ${
                   isActive
                     ? "text-white"
                     : "text-white/50 hover:text-white/80"
@@ -79,7 +78,7 @@ export function Header() {
           })}
           <Link
             href="/cabinet"
-            className="motion-header-cta ml-3 px-5 py-2 rounded-xl gradient-bg text-black font-semibold text-sm relative z-10"
+            className="motion-header-cta ml-3 whitespace-nowrap px-5 py-2 rounded-xl gradient-bg text-black font-semibold text-sm relative z-10"
           >
             Личный кабинет
           </Link>
@@ -88,7 +87,7 @@ export function Header() {
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="relative z-50 flex h-11 w-11 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl liquid-glass-mini lg:hidden"
+          className="relative z-50 flex h-11 w-11 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl liquid-glass-mini xl:hidden"
           aria-label={isOpen ? "Закрыть меню" : "Открыть меню"}
           aria-expanded={isOpen}
           aria-controls="mobile-navigation"
@@ -112,7 +111,7 @@ export function Header() {
       </div>
 
       {isOpen && (
-          <div className="fixed inset-x-2 top-[4.75rem] z-40 sm:inset-x-3 sm:top-20 lg:hidden">
+          <div className="fixed inset-x-2 top-[4.75rem] z-40 sm:inset-x-3 sm:top-20 xl:hidden">
             <button
               type="button"
               aria-label="Закрыть меню"
@@ -150,11 +149,11 @@ export function Header() {
                 })}
                 <div className="w-full h-px bg-white/10 my-2" />
                 <Link
-                  href="/clubs/mirage-pro"
+                  href="/cabinet"
                   onClick={() => setIsOpen(false)}
                   className="w-full text-center py-3.5 rounded-2xl gradient-bg text-black font-bold text-lg hover:opacity-90 transition-opacity"
                 >
-                  Открыть Мираж PRO
+                  Личный кабинет
                 </Link>
               </nav>
             </div>

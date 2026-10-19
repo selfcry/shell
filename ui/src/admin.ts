@@ -916,7 +916,7 @@ async function viewAnalytics(): Promise<HTMLElement | null> {
 async function viewSettings(): Promise<HTMLElement | null> {
   const [r, up, yk] = await Promise.all([
     api<{ configured: boolean; chat: string | null }>("GET", "/api/admin/settings/telegram"),
-    api<{ enabled: boolean; mode: string; ring: string; url: string; latest: string | null; error: string | null }>("GET", "/api/admin/settings/updates"),
+    api<{ enabled: boolean; mode: string; ring: string; repo: string; hasToken: boolean; latest: string | null; ready: boolean; error: string | null }>("GET", "/api/admin/settings/updates"),
     api<{ configured: boolean; shopId: string | null; receipt: boolean; vat: string | null }>("GET", "/api/admin/settings/yookassa"),
   ]);
   if (r.status !== 200) return connectionProblem(r.status);
@@ -925,14 +925,19 @@ async function viewSettings(): Promise<HTMLElement | null> {
   updOn.checked = up.data.enabled;
   const updMode = el("select", { class: "ad-input" }, [["test", "Только тестовые ПК (сначала проверить)"], ["all", "Все ПК клуба"]].map(([v, t]) => el("option", { attrs: { value: v, ...(up.data.mode === v ? { selected: "" } : {}) }, text: t })));
   const updRing = textInput(up.data.ring ?? "", "text", "PC-01, PC-02");
+  const ghToken = textInput("", "password", up.data.hasToken ? "•••••• (сохранён, введите новый, чтобы заменить)" : "github_pat_… (только чтение)");
+  const ghRepo = textInput(up.data.repo ?? "selfcry/shell", "text", "владелец/репозиторий");
   const updates = el("section", { class: "ad-card" }, [
     el("h2", { text: "Обновления программ на ПК" }),
-    el("p", { class: "ad-muted", text: `Последняя версия в GitHub: ${up.data.latest ?? "—"}${up.data.error ? ` (${up.data.error})` : ""}. Служба на ПК скачивает её только вне сеанса, проверяет подпись и при сбое возвращается на прошлую версию. Версия каждого ПК видна на карточке в «Зале».` }),
+    el("p", { class: "ad-muted", text: `Последняя версия: ${up.data.latest ?? "—"}${up.data.latest ? (up.data.ready ? " (пакет на сервере, готов к раздаче)" : " (пакет ещё скачивается)") : ""}${up.data.error ? ` — ${up.data.error}` : ""}. Сервер сам забирает релиз из приватного GitHub и раздаёт его ПК; служба на ПК ставит обновление только вне сеанса, проверяет подпись и при сбое возвращается на прошлую версию. Версия каждого ПК видна в «Зале».` }),
+    field("Токен GitHub (только чтение)", ghToken),
+    el("p", { class: "ad-muted ad-small", text: "GitHub → Settings → Developer settings → Fine-grained tokens → Generate: Repository access — только этот репозиторий, Permissions → Contents: Read-only. Больше никаких прав не давайте." }),
+    field("Репозиторий", ghRepo),
     el("label", { class: "ad-check" }, [updOn, el("span", { text: "Обновлять автоматически" })]),
     field("Кому", updMode), field("Тестовые ПК (имена через запятую)", updRing),
     el("div", { class: "ad-btnrow" }, [
-      button("Сохранить", "primary", () => run(api("PUT", "/api/admin/settings/updates", { enabled: updOn.checked, mode: (updMode as HTMLSelectElement).value, ring: updRing.value }), "Сохранено", () => void render())),
-      button("Проверить GitHub", "", async () => { const x = await api<{ latest: string | null; error: string | null }>("GET", "/api/admin/settings/updates?refresh=true"); toast(x.data.latest ? `Последняя версия ${x.data.latest}` : x.data.error ?? "Нет данных", x.data.latest ? "ok" : "error"); }),
+      button("Сохранить", "primary", () => run(api("PUT", "/api/admin/settings/updates", { enabled: updOn.checked, mode: (updMode as HTMLSelectElement).value, ring: updRing.value, token: ghToken.value.trim() || null, repo: ghRepo.value.trim() }), "Сохранено", () => void render())),
+      button("Проверить сейчас", "", async () => { const x = await api<{ latest: string | null; error: string | null }>("GET", "/api/admin/settings/updates?refresh=true"); toast(x.data.error ?? (x.data.latest ? `Последняя версия ${x.data.latest}` : "Нет данных"), x.data.error ? "error" : "ok"); void render(); }),
     ]),
   ]);
   // ---- онлайн-оплата ----

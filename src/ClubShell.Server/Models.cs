@@ -55,4 +55,4 @@ public record WebBookingReq(long PcId, long Starts, int Minutes);
 public record WebPromoReq(string Code);
 public record WebPayReq(int Amount);
 public record YooKassaReq(string? ShopId, string? Secret, bool? Receipt, int? Vat);
-public record UpdateSettingsReq(bool? Enabled, string? Mode, string? Ring, string? Url);
+public record UpdateSettingsReq(bool? Enabled, string? Mode, string? Ring, string? Token, string? Repo);

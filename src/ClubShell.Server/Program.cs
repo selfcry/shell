@@ -234,8 +234,16 @@ pc.MapPost("/order", (HttpContext ctx, PcOrderReq req, Telegram tg) =>
 pc.MapGet("/update", async (HttpContext ctx, string? version, UpdateFeed feed) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
-    var m = await feed.ForPcAsync(p, version ?? "0.0.0");
+    var m = await feed.ForPcAsync(p, version ?? "0.0.0", $"https://{ctx.Request.Host}");
     return m is null ? Results.NoContent() : Results.Ok(m);
+});
+
+// Пакет клиента с сервера клуба (репозиторий приватный: ПК на GitHub не ходят). Только для ПК клуба.
+pc.MapGet("/update/package", (HttpContext ctx, string? version, UpdateFeed feed) =>
+{
+    var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
+    var file = feed.PackagePath(version ?? "");
+    return file is null ? Results.NotFound() : Results.File(file, "application/zip", Path.GetFileName(file), enableRangeProcessing: true);
 });
 
 pc.MapPost("/heartbeat", (HttpContext ctx, HeartbeatReq req, UpdateFeed feed) =>
@@ -623,14 +631,16 @@ admin.MapPost("/calls/{pcId:long}/ack", (long pcId) => Results.Ok(new { ok = clu
 admin.MapGet("/settings/updates", async (UpdateFeed feed, bool? refresh) =>
 {
     var (m, error) = await feed.LatestAsync(force: refresh == true);
-    return Results.Ok(new { enabled = feed.Enabled, mode = feed.TestOnly ? "test" : "all", ring = feed.Ring, url = feed.Url, latest = m?.Version, error });
+    return Results.Ok(new { enabled = feed.Enabled, mode = feed.TestOnly ? "test" : "all", ring = feed.Ring, repo = feed.Repo, hasToken = feed.HasToken,
+        latest = m?.Version, ready = m is not null && feed.PackagePath(m.Version) is not null, error });
 });
 admin.MapPut("/settings/updates", (UpdateSettingsReq req) =>
 {
     if (req.Enabled is not null) club.SetSetting("upd_enabled", req.Enabled.Value ? "1" : null);
     if (req.Mode is "test" or "all") club.SetSetting("upd_mode", req.Mode);
     if (req.Ring is not null) club.SetSetting("upd_ring", req.Ring.Trim());
-    if (req.Url is not null) club.SetSetting("upd_url", req.Url.Trim().StartsWith("https://") ? req.Url.Trim() : null);
+    if (!string.IsNullOrWhiteSpace(req.Token)) club.SetSetting("gh_token", req.Token.Trim());
+    if (req.Repo is not null) club.SetSetting("gh_repo", System.Text.RegularExpressions.Regex.IsMatch(req.Repo.Trim(), @"^[\w.-]+/[\w.-]+$") ? req.Repo.Trim() : null);
     return Results.Ok(new { ok = true });
 });
 admin.MapGet("/settings/yookassa", (YooKassa yk) => Results.Ok(new { configured = yk.Configured, shopId = club.Setting("yk_shop"), receipt = club.Setting("yk_receipt") == "1", vat = club.Setting("yk_vat") }));
