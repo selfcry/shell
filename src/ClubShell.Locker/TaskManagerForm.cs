@@ -1,3 +1,4 @@
+using ClubShell.Core;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -50,7 +51,7 @@ internal sealed class TaskManagerForm : Form
         _web.CoreWebView2.WebMessageReceived += OnWebMessage;
         _web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
 
-        var dev = Environment.GetEnvironmentVariable("CLUBSHELL_DEV_URL");
+        var dev = DevFlags.Get("CLUBSHELL_DEV_URL");
         if (!string.IsNullOrEmpty(dev)) _web.CoreWebView2.Navigate(dev.TrimEnd('/') + "/taskmgr.html");
         else
         {

@@ -1,3 +1,4 @@
+using ClubShell.Core;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
@@ -29,7 +30,7 @@ internal static class NetworkTest
     {
         get
         {
-            var env = Environment.GetEnvironmentVariable("CLUBSHELL_PING_HOST");
+            var env = DevFlags.Get("CLUBSHELL_PING_HOST");
             if (!string.IsNullOrEmpty(env)) return env;
             return _serverUrl is not null && Uri.TryCreate(_serverUrl, UriKind.Absolute, out var u) && u.Host is not ("127.0.0.1" or "localhost") ? u.Host : "1.1.1.1";
         }

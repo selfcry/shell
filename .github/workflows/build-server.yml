@@ -6,6 +6,7 @@ on:
     tags: ['v*']
     paths:
       - 'src/ClubShell.Server/**'
+      - 'ui/**'
       - 'deploy/**'
       - '.github/workflows/build-server.yml'
   pull_request:
@@ -29,6 +30,12 @@ jobs:
           dotnet-version: 8.0.x
       - name: Публикация ClubShell.Server
         run: dotnet publish src/ClubShell.Server -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o out
+      - uses: ./.github/actions/build-ui
+      - name: Веб-админка (для nginx, /admin/)
+        run: |
+          mkdir -p out/admin-ui
+          cp ui/dist/admin.html out/admin-ui/index.html
+          cp -r ui/dist/assets out/admin-ui/assets
       - name: Файлы развёртывания
         run: cp -r deploy out/deploy
       - name: Упаковка в zip

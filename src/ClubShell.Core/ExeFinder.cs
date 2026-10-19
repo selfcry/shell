@@ -1,3 +1,5 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Win32;
 
 namespace ClubShell.Core;
@@ -18,6 +20,8 @@ public static class ExeFinder
         {
             if (Cache.TryGetValue(exeName, out var cached) && (cached is null || File.Exists(cached))) return cached; // найденное и «не найдено» кэшируются до Reset()
             var found = FromRegistry(exeName) ?? FromFolders(exeName);
+            // Найденное принимаем, только если гость не может подменить файл (иначе он подложит свой exe следующему гостю).
+            if (found is not null && !IsProtected(found)) found = null;
             Cache[exeName] = found;
             return found;
         }
@@ -32,7 +36,7 @@ public static class ExeFinder
         var stem = Path.GetFileNameWithoutExtension(exeName);
         try
         {
-            foreach (var hive in new[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser })
+            foreach (var hive in new[] { RegistryHive.LocalMachine }) // HKCU гость пишет сам — ему не верим
             foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
                 using var baseKey = RegistryKey.OpenBaseKey(hive, view);
@@ -57,6 +61,33 @@ public static class ExeFinder
         }
         catch (Exception) { /* реестр недоступен — идём дальше по папкам */ }
         return null;
+    }
+
+    /// <summary>Ни файл, ни его папка не дают права записи обычным пользователям.</summary>
+    public static bool IsProtected(string path)
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            return !GuestCanWrite(new FileInfo(path).GetAccessControl()) && (dir is null || !GuestCanWrite(new DirectoryInfo(dir).GetAccessControl()));
+        }
+        catch (Exception) { return false; }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static bool GuestCanWrite(FileSystemSecurity sec)
+    {
+        const FileSystemRights WriteRights = FileSystemRights.WriteData | FileSystemRights.AppendData | FileSystemRights.Delete
+            | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership | FileSystemRights.WriteAttributes | FileSystemRights.DeleteSubdirectoriesAndFiles;
+        var guests = new[] { WellKnownSidType.BuiltinUsersSid, WellKnownSidType.AuthenticatedUserSid, WellKnownSidType.WorldSid, WellKnownSidType.InteractiveSid }
+            .Select(t => new SecurityIdentifier(t, null)).ToList();
+        foreach (FileSystemAccessRule rule in sec.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+        {
+            if (rule.AccessControlType != AccessControlType.Allow || rule.PropagationFlags.HasFlag(PropagationFlags.InheritOnly)) continue;
+            if (rule.IdentityReference is SecurityIdentifier sid && guests.Contains(sid) && (rule.FileSystemRights & WriteRights) != 0) return true;
+        }
+        return false;
     }
 
     private static string? FromFolders(string exeName)

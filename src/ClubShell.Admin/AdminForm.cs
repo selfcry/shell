@@ -138,6 +138,10 @@ internal sealed class AdminForm : Form
         {
             Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"Сервер недоступен\"}" });
         }
+        catch (Exception)
+        {
+            Post(new { type = "apiResult", id, status = 0, body = "{\"ok\":false,\"error\":\"Ошибка запроса\"}" }); // страница не должна ждать ответа вечно
+        }
     }
 
     private async Task UploadCoverAsync(int id, string path)

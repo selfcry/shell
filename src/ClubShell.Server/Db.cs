@@ -75,8 +75,23 @@ public sealed class Db
               ts INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_tx_guest ON tx(guest_id, id);
             CREATE INDEX IF NOT EXISTS ix_tx_kind_ts ON tx(kind, ts);
+            CREATE TABLE IF NOT EXISTS audit (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              ts INTEGER NOT NULL,
+              ip TEXT,
+              action TEXT NOT NULL,
+              details TEXT);
+            CREATE INDEX IF NOT EXISTS ix_audit_ts ON audit(ts);
             """);
+        // миграции: новые колонки добавляются к уже существующей базе
+        AddColumn(c, "pcs", "deleted", "INTEGER NOT NULL DEFAULT 0");
 
+    }
+
+    private static void AddColumn(SqliteConnection c, string table, string column, string type)
+    {
+        var exists = Scalar<long>(c, $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $n", ("$n", column)) > 0;
+        if (!exists) Exec(c, $"ALTER TABLE {table} ADD COLUMN {column} {type}");
     }
 
     public static long Now() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();

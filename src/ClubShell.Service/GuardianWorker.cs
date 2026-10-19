@@ -17,13 +17,21 @@ public sealed class GuardianWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
         _log.LogInformation("Guardian started, locker: {Path}", _lockerPath);
+        // Режим обслуживания живёт до перезагрузки: после неё ПК снова под защитой, даже если админ забыл выйти.
+        try { File.Delete(ShellConfig.MaintenanceFlag); } catch (Exception) { /* нет файла */ }
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
 
         while (await timer.WaitForNextTickAsync(stop))
         {
             try
             {
-                if (File.Exists(ShellConfig.MaintenanceFlag)) continue;
+                if (File.Exists(ShellConfig.MaintenanceFlag))
+                {
+                    // и не дольше 30 минут
+                    if (DateTime.UtcNow - File.GetLastWriteTimeUtc(ShellConfig.MaintenanceFlag) < TimeSpan.FromMinutes(30)) continue;
+                    File.Delete(ShellConfig.MaintenanceFlag);
+                    _log.LogWarning("Maintenance mode expired");
+                }
                 if (SessionLauncher.IsRunningInActiveSession("ClubShell.Locker")) continue;
 
                 _log.LogWarning("Locker is not running in the active session, starting");

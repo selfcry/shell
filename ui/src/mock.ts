@@ -254,6 +254,8 @@ function handleAdmin(msg: ToHost, emit: (m: FromHost) => void): void {
   };
   const parts = route!.split("/").filter(Boolean);
 
+  if (msg.method === "GET" && route === "/audit")
+    return reply([{ id: 2, ts: now() - 300, ip: "192.168.1.10", action: "Пополнение", details: "гость #1: +500 ₽, баланс 960 ₽" }, { id: 1, ts: now() - 900, ip: "192.168.1.10", action: "POST /api/admin/pcs/2/command", details: null }]);
   if (msg.method === "GET" && route === "/stats")
     return reply({ pcs: adminData.pcs.length, activeSessions: adminData.pcs.filter((p) => p.session).length, guests: adminData.guests.length, revenueToday: 1240, topupsToday: 3000 });
   if (msg.method === "GET" && route === "/pcs") return reply(adminData.pcs);

@@ -132,6 +132,8 @@ onMessage((msg: FromHost) => {
       rebootText.textContent = msg.test ? "Тестовый режим: перезагрузка и очистка пропущены" : "Перезагрузка… Файлы гостя удаляются";
       reboot.classList.add("show");
       if (msg.test) window.setTimeout(() => reboot.classList.remove("show"), 2500);
+      // перезагрузка не случилась (служба не смогла) — через минуту не оставляем ПК под вечным спиннером
+      else window.setTimeout(() => { reboot.classList.remove("show"); intro.setNotice("Перезагрузка не выполнена. Обратитесь к администратору."); }, 60_000);
       break;
     case "catalog":
       home.setCatalog(msg.items);

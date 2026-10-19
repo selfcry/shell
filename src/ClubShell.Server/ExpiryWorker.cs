@@ -16,12 +16,15 @@ public sealed class ExpiryWorker : BackgroundService
         {
             try
             {
+                var sends = new List<Task>();
                 foreach (var s in _club.Expired())
                 {
-                    if (_club.EndSession(s.PcId, "Время вышло") is null) continue;
+                    if (_club.EndSession(s.PcId, "Время вышло", expectedId: s.Id, onlyIfExpired: true) is null) continue;
                     _log.LogInformation("Сеанс {Id} ({Guest} на {Pc}) завершён: время вышло", s.Id, s.Guest, s.Pc);
-                    await _hub.SendAsync(s.PcId, new { type = "command", name = "endSession", text = "Время вышло" });
+                    // отправка не держит цикл: медленный ПК не задерживает завершение остальных
+                    sends.Add(_hub.SendAsync(s.PcId, new { type = "command", name = "endSession", text = "Время вышло" }));
                 }
+                if (sends.Count > 0) await Task.WhenAll(sends);
             }
             catch (Exception ex) { _log.LogError(ex, "Expiry tick failed"); }
         }

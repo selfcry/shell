@@ -4,7 +4,7 @@ using ClubShell.Server;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 64 * 1024);
 if (string.IsNullOrEmpty(builder.Configuration["urls"]) && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
-    builder.WebHost.UseUrls("http://0.0.0.0:5080");
+    builder.WebHost.UseUrls("http://127.0.0.1:5080"); // наружу сервер выставляет nginx; слушать все адреса — только явно через ASPNETCORE_URLS
 
 var dataDir = builder.Configuration["Club:DataDir"] ?? Path.Combine(AppContext.BaseDirectory, "data");
 Directory.CreateDirectory(dataDir);
@@ -25,17 +25,19 @@ var keyFile = Path.Combine(dataDir, "admin-key.txt");
 if (!File.Exists(keyFile))
 {
     File.WriteAllText(keyFile, Security.NewToken());
+    if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(keyFile, UnixFileMode.UserRead | UnixFileMode.UserWrite); // только владелец
     Console.WriteLine($"Ключ администратора создан: {keyFile}");
 }
 var adminKey = File.ReadAllText(keyFile).Trim();
 
 var club = new ClubService(db, tz);
-club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", true));
+club.SeedDefaults(builder.Configuration.GetValue("Club:SeedDemo", false)); // демо-гости только по явному Club__SeedDemo=true
 
 var catalog = new CatalogService(db, dataDir);
 builder.Services.AddSingleton(catalog);
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(club);
+builder.Services.AddSingleton(tz);
 builder.Services.AddSingleton<PcHub>();
 builder.Services.AddHostedService<ExpiryWorker>();
 builder.Services.AddHostedService<MaintenanceWorker>();
@@ -47,7 +49,8 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 
 Pc? AuthPc(HttpContext ctx)
 {
-    var token = ctx.Request.Headers["X-Pc-Token"].FirstOrDefault() ?? ctx.Request.Query["token"].FirstOrDefault();
+    // только заголовок: токен в адресе попал бы в журналы nginx
+    var token = ctx.Request.Headers["X-Pc-Token"].FirstOrDefault();
     return string.IsNullOrEmpty(token) ? null : club.PcByToken(token);
 }
 
@@ -60,7 +63,24 @@ bool IsAdmin(HttpContext ctx)
 IResult Unauthorized(string what) => Results.Json(new { ok = false, error = what }, statusCode: 401);
 object Pkg(Tariff t) => new { id = t.Id, name = t.Name, minutes = t.Minutes, price = t.Price, nightOnly = t.NightOnly };
 
-app.MapGet("/health", () => Results.Ok(new { ok = true, time = Db.Now() }));
+var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0";
+app.MapGet("/health", () =>
+{
+    try { using var c = db.Open(); Db.Scalar<long>(c, "SELECT 1"); }
+    catch (Exception) { return Results.Json(new { ok = false, error = "База недоступна" }, statusCode: 503); }
+    return Results.Ok(new { ok = true, time = Db.Now() });
+});
+
+void Audit(HttpContext ctx, string action, string? details = null)
+{
+    try
+    {
+        using var c = db.Open();
+        Db.Exec(c, "INSERT INTO audit(ts, ip, action, details) VALUES($t, $ip, $a, $d)",
+            ("$t", Db.Now()), ("$ip", ctx.Request.Headers["X-Real-IP"].FirstOrDefault() ?? ctx.Connection.RemoteIpAddress?.ToString()), ("$a", action), ("$d", details));
+    }
+    catch (Exception) { /* журнал не должен ломать операцию */ }
+}
 
 // ======================= ПК =======================
 var pc = app.MapGroup("/api/pc");
@@ -106,20 +126,26 @@ var speedLast = new System.Collections.Concurrent.ConcurrentDictionary<long, lon
 var speedBlock = new byte[64 * 1024];
 Random.Shared.NextBytes(speedBlock); // случайные данные: не сжимаются по дороге и не завышают скорость
 
+var speedSlots = new SemaphoreSlim(3); // одновременно не больше 3 замеров на весь клуб: канал VDS общий
+
 bool SpeedAllowed(long pcId, string kind)
 {
     var key = pcId * 2 + (kind == "down" ? 0 : 1);
     var now = Db.Now();
-    var last = speedLast.GetOrAdd(key, 0);
-    if (now - last < 10) return false;
-    speedLast[key] = now;
-    return true;
+    while (true)
+    {
+        var last = speedLast.GetOrAdd(key, 0);
+        if (now - last < 10) return false;
+        if (speedLast.TryUpdate(key, now, last)) return true; // атомарно: из параллельных запросов пройдёт один
+    }
 }
 
 pc.MapGet("/speedtest/down", async (HttpContext ctx, int? bytes) =>
 {
     var p = AuthPc(ctx); if (p is null) { ctx.Response.StatusCode = 401; return; }
     if (!SpeedAllowed(p.Id, "down")) { ctx.Response.StatusCode = 429; return; }
+    if (!await speedSlots.WaitAsync(0)) { ctx.Response.StatusCode = 429; return; }
+    try {
     var total = Math.Clamp(bytes ?? 10_000_000, 1, 25_000_000);
     ctx.Response.ContentType = "application/octet-stream";
     ctx.Response.ContentLength = total;
@@ -130,19 +156,25 @@ pc.MapGet("/speedtest/down", async (HttpContext ctx, int? bytes) =>
         await ctx.Response.Body.WriteAsync(speedBlock.AsMemory(0, n), ctx.RequestAborted);
         left -= n;
     }
+    } finally { speedSlots.Release(); }
 });
 
 pc.MapPost("/speedtest/up", async (HttpContext ctx) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     if (!SpeedAllowed(p.Id, "up")) return Results.StatusCode(429);
-    var limit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-    if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = 5_000_000;
-    var buf = new byte[64 * 1024];
-    long total = 0;
-    int r;
-    while ((r = await ctx.Request.Body.ReadAsync(buf, ctx.RequestAborted)) > 0) total += r;
-    return Results.Ok(new { ok = true, bytes = total });
+    if (!await speedSlots.WaitAsync(0)) return Results.StatusCode(429);
+    try
+    {
+        var limit = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = 5_000_000;
+        var buf = new byte[64 * 1024];
+        long total = 0;
+        int r;
+        while ((r = await ctx.Request.Body.ReadAsync(buf, ctx.RequestAborted)) > 0) total += r;
+        return Results.Ok(new { ok = true, bytes = total });
+    }
+    finally { speedSlots.Release(); }
 });
 
 pc.MapPost("/session/start", (HttpContext ctx, StartReq req) =>
@@ -156,6 +188,7 @@ pc.MapPost("/session/stop", (HttpContext ctx, StopReq req) =>
 {
     var p = AuthPc(ctx); if (p is null) return Unauthorized("ПК не опознан");
     var s = club.EndSession(p.Id, "Гость завершил сеанс");
+    club.Logout(p.Id); // после завершения купить время снова можно только после нового входа
     return Results.Ok(new { ok = true, ended = s is not null });
 });
 
@@ -180,7 +213,21 @@ app.Map("/ws/pc", async (HttpContext ctx, PcHub hub) =>
 
 // ======================= админ =======================
 var admin = app.MapGroup("/api/admin");
-admin.AddEndpointFilter(async (ctx, next) => IsAdmin(ctx.HttpContext) ? await next(ctx) : Unauthorized("Нужен ключ администратора"));
+admin.AddEndpointFilter(async (ctx, next) =>
+{
+    var http = ctx.HttpContext;
+    if (!IsAdmin(http)) return Unauthorized("Нужен ключ администратора");
+    var result = await next(ctx);
+    if (!HttpMethods.IsGet(http.Request.Method) && !http.Items.ContainsKey("audited")) Audit(http, $"{http.Request.Method} {http.Request.Path}"); // кто и когда что менял
+    return result;
+});
+admin.MapGet("/audit", () =>
+{
+    using var c = db.Open();
+    return Results.Ok(Db.Query<object>(c, "SELECT id, ts, ip, action, details FROM audit ORDER BY id DESC LIMIT 300",
+        r => new { id = r.GetInt64(0), ts = r.GetInt64(1), ip = r.IsDBNull(2) ? null : r.GetString(2), action = r.GetString(3), details = r.IsDBNull(4) ? null : r.GetString(4) }));
+});
+admin.MapGet("/version", () => Results.Ok(new { version }));
 
 // ---- каталог игр и приложений ----
 object AppDto(AppEntry a) => new
@@ -238,8 +285,20 @@ admin.MapPost("/pcs", (NewPcReq req) =>
     return p is null ? Results.BadRequest(new { ok = false, error }) : Results.Ok(new { ok = true, id = p.Id, name = p.Name, zone = p.Zone, token });
 });
 
-admin.MapDelete("/pcs/{id:long}", (long id) =>
-    club.DeletePc(id) ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = "ПК не найден или на нём идёт сеанс" }));
+admin.MapDelete("/pcs/{id:long}", async (long id, PcHub hub) =>
+{
+    if (!club.DeletePc(id)) return Results.BadRequest(new { ok = false, error = "ПК не найден или на нём идёт сеанс" });
+    await hub.DisconnectAsync(id);
+    return Results.Ok(new { ok = true });
+});
+
+admin.MapPost("/pcs/{id:long}/token", async (long id, PcHub hub) =>
+{
+    var token = club.ResetPcToken(id);
+    if (token is null) return Results.NotFound(new { ok = false, error = "ПК не найден" });
+    await hub.DisconnectAsync(id);
+    return Results.Ok(new { ok = true, token });
+});
 
 admin.MapPost("/pcs/{id:long}/command", async (long id, CommandReq req, PcHub hub) =>
 {
@@ -261,10 +320,13 @@ admin.MapPut("/guests/{id:long}", (long id, UpdateGuestReq req) =>
     var r = club.UpdateGuest(id, req.Password, req.Banned, req.Birth);
     return r.Ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { ok = false, error = r.Error });
 });
-admin.MapPost("/guests/{id:long}/topup", async (long id, TopUpReq req, PcHub hub) =>
+admin.MapPost("/guests/{id:long}/topup", async (long id, TopUpReq req, PcHub hub, HttpContext http) =>
 {
-    var (r, balance) = club.TopUp(id, req.Amount, req.Note);
+    var (r, balance) = club.TopUp(id, req.Amount, req.Note, req.RequestId);
     if (!r.Ok) return Results.BadRequest(new { ok = false, error = r.Error });
+    http.Items["audited"] = true;
+    if (r.Error == "duplicate") return Results.Ok(new { ok = true, balance }); // повтор того же запроса: ничего не делаем
+    Audit(http, req.Amount > 0 ? "Пополнение" : "Списание", $"гость #{id}: {req.Amount:+#;-#} ₽, баланс {balance} ₽{(string.IsNullOrWhiteSpace(req.Note) ? "" : " · " + req.Note)}");
     // Гость уже сидит за ПК: сразу присылаем ему новый баланс, чтобы не перезаходить.
     if (club.BalanceTarget(id) is { } t) await hub.SendAsync(t.pcId, new { type = "command", name = "balance", user = t.login, balance = t.balance });
     return Results.Ok(new { ok = true, balance });

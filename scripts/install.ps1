@@ -1,7 +1,15 @@
 ﻿# Установка службы-стража. Запускать от администратора ПОСЛЕ build.ps1.
 #   .\scripts\install.ps1            — установить и запустить
+#   .\scripts\install.ps1 -PcToken "токен из админки" [-PcName PC-05] [-Zone ARENA] [-ServerUrl https://cryvx.ru]
+#                                    — установить, сразу подключив ПК к серверу клуба
 #   .\scripts\install.ps1 -Uninstall — удалить
-param([switch]$Uninstall)
+param(
+    [switch]$Uninstall,
+    [string]$ServerUrl = "https://cryvx.ru",
+    [string]$PcToken = "",
+    [string]$PcName = "",
+    [string]$Zone = ""
+)
 $ErrorActionPreference = "Stop"
 $name   = "ClubShellService"
 $target = "C:\Program Files\ClubShell"
@@ -21,6 +29,23 @@ Copy-Item "$src\*" $target -Recurse -Force
 
 # Права: менять файлы программы могут только SYSTEM и администраторы, обычные пользователи — только читать/запускать.
 icacls $target /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "Users:(OI)(CI)RX" | Out-Null
+
+# Подключение к серверу клуба: дописываем адрес и токен в config.json (остальные настройки и PIN сохраняются).
+if ($PcToken) {
+    $cfgDir  = "C:\ProgramData\ClubShell"
+    $cfgFile = Join-Path $cfgDir "config.json"
+    New-Item -ItemType Directory -Force $cfgDir | Out-Null
+    $cfg = if (Test-Path $cfgFile) { Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
+    $set = { param($k, $v) if ($cfg.PSObject.Properties[$k]) { $cfg.$k = $v } else { $cfg | Add-Member -NotePropertyName $k -NotePropertyValue $v } }
+    & $set "ServerUrl" $ServerUrl.TrimEnd("/")
+    & $set "PcToken" $PcToken.Trim()
+    if ($PcName) { & $set "PcName" $PcName }
+    if ($Zone)   { & $set "Zone" $Zone }
+    [IO.File]::WriteAllText($cfgFile, ($cfg | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    # токен ПК читают только SYSTEM и администраторы
+    icacls $cfgDir /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+    Write-Host "ПК подключён к $ServerUrl."
+}
 
 sc.exe create $name binPath= "`"$target\ClubShell.Service.exe`"" start= auto DisplayName= "ClubShell Service" | Out-Null
 # Если службу убили или она упала — перезапустить через 1 секунду, всегда.

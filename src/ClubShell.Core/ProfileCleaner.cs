@@ -24,6 +24,9 @@ public static class ProfileCleaner
         @"AppData\Roaming\discord",
         @"AppData\Roaming\Telegram Desktop",
         @"AppData\Local\Yandex\YandexBrowser\User Data",
+        @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup", // автозапуск, подложенный прошлым гостем
+        @"AppData\Roaming\Microsoft\Credentials",                            // сохранённые пароли Windows
+        @"AppData\Local\Microsoft\Credentials",
     };
 
     /// <summary>Возвращает null, если чистить нельзя (с причиной в <paramref name="refusal"/>).</summary>
@@ -39,6 +42,14 @@ public static class ProfileCleaner
             var target = Path.GetFullPath(Path.Combine(profile, rel.Replace('\\', Path.DirectorySeparatorChar)));
             // подпапка обязана лежать внутри профиля гостя и не быть самим профилем
             if (!IsInside(profile, target) || !Directory.Exists(target)) continue;
+            // Ни сама папка, ни её родители до профиля не должны быть ссылкой: гость мог заменить Downloads на junction
+            // к C:\ProgramData\ClubShell, и служба (SYSTEM) стёрла бы чужое. Папку-ссылку удаляем как ссылку.
+            if (ReparseOnPath(profile, target, out var link))
+            {
+                if (link == target) try { Directory.Delete(target); files++; } catch (Exception) { errors++; }
+                else errors++;
+                continue;
+            }
             ClearContents(target, ref files, ref dirs, ref errors, ref bytes);
         }
         return new CleanResult(files, dirs, errors, bytes);
@@ -56,7 +67,28 @@ public static class ProfileCleaner
         profile = Path.GetFullPath(Path.Combine(root, guestUser.Trim()));
         if (!IsInside(root, profile)) return "профиль вне папки пользователей";
         if (!Directory.Exists(profile)) return "профиль гостя не найден";
+        if (new DirectoryInfo(profile).Attributes.HasFlag(FileAttributes.ReparsePoint)) return "профиль гостя — ссылка, чистить нельзя";
         return null;
+    }
+
+    /// <summary>Есть ли ссылка (junction/symlink) среди папок от профиля (включительно) до target. link — первая найденная.</summary>
+    private static bool ReparseOnPath(string profile, string target, out string? link)
+    {
+        link = null;
+        var cur = target;
+        while (true)
+        {
+            try
+            {
+                if (new DirectoryInfo(cur).Attributes.HasFlag(FileAttributes.ReparsePoint)) link = cur; // запоминаем ближайшую к профилю
+            }
+            catch (Exception) { link = cur; return true; } // не смогли проверить — не трогаем
+            if (string.Equals(cur.TrimEnd(Path.DirectorySeparatorChar), profile.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)) break;
+            var parent = Path.GetDirectoryName(cur);
+            if (parent is null || parent.Length < profile.Length) { link = cur; return true; }
+            cur = parent;
+        }
+        return link is not null;
     }
 
     private static bool IsInside(string parent, string child)

@@ -26,6 +26,8 @@ if (webview) {
 }
 
 export const isMock = mock !== null && !liveAdmin;
+/** Админка открыта в обычном браузере и работает с настоящим сервером. */
+export const isLiveAdmin = !webview && liveAdmin;
 
 export function send(msg: ToHost): void {
   if (webview) webview.postMessage(JSON.stringify(msg));

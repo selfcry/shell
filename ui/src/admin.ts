@@ -4,7 +4,7 @@ import "@fontsource/russo-one/400.css";
 import "./styles.css";
 import "./admin.css";
 
-import { onMessage, send } from "./bridge";
+import { isLiveAdmin, onMessage, send } from "./bridge";
 import { el, formatTime } from "./dom";
 import type { FromHost } from "./protocol";
 
@@ -26,7 +26,12 @@ const pending = new Map<number, (r: { status: number; body: string }) => void>()
 function api<T = { ok?: boolean; error?: string }>(method: "GET" | "POST" | "PUT" | "DELETE" | "UPLOAD", path: string, body?: unknown): Promise<ApiReply<T>> {
   return new Promise((resolve) => {
     const id = nextId++;
+    // ответ не пришёл — не висим вечно: статус 0, как «сервер недоступен» (загрузка ждёт выбор файла дольше)
+    const timer = window.setTimeout(() => {
+      if (pending.delete(id)) resolve({ status: 0, data: { ok: false, error: "Сервер не ответил" } as T });
+    }, method === "UPLOAD" ? 180_000 : 15_000);
     pending.set(id, (r) => {
+      window.clearTimeout(timer);
       let data: unknown = {};
       try { data = JSON.parse(r.body); } catch { /* не JSON */ }
       resolve({ status: r.status, data: data as T });
@@ -38,13 +43,31 @@ function api<T = { ok?: boolean; error?: string }>(method: "GET" | "POST" | "PUT
 // ---------- мелкие помощники ----------
 const app = document.getElementById("app")!;
 const rub = (n: number) => `${n.toLocaleString("ru-RU")} ₽`;
-const when = (ts: number) => new Date(ts * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const when = (ts: number) => new Date(ts * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-function button(text: string, cls = "", onClick?: () => void): HTMLButtonElement {
+/** Кнопка. Если обработчик асинхронный, кнопка выключена до его завершения: двойной клик не проведёт оплату дважды. */
+function button(text: string, cls = "", onClick?: () => unknown): HTMLButtonElement {
   const b = el("button", { class: "ad-btn " + cls, text });
-  if (onClick) b.addEventListener("click", onClick);
+  if (onClick) b.addEventListener("click", () => {
+    if (b.disabled) return;
+    const r = onClick();
+    if (r instanceof Promise) {
+      b.disabled = true;
+      void r.finally(() => (b.disabled = false));
+    }
+  });
   return b;
 }
+
+/** Целое неотрицательное число из поля или null. */
+function intOf(input: HTMLInputElement): number | null {
+  const v = input.value.trim();
+  if (!/^\d+$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+const newRequestId = (): string => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 const toastEl = el("div", { class: "ad-toast" });
 let toastTimer: number | undefined;
@@ -57,7 +80,7 @@ function toast(text: string, kind: "ok" | "error" = "ok"): void {
 
 /** Показывает окно с содержимым. Возвращает функцию закрытия. */
 function modal(title: string, content: Node[], actions: HTMLElement[] = []): () => void {
-  const close = () => overlay.remove();
+  const close = (): void => overlay.remove();
   const box = el("div", { class: "ad-modal" }, [
     el("div", { class: "ad-modal-head" }, [el("div", { class: "ad-modal-title", text: title }), button("×", "icon", close)]),
     el("div", { class: "ad-modal-body" }, content),
@@ -93,7 +116,7 @@ async function run(promise: Promise<ApiReply<{ ok?: boolean; error?: string }>>,
 }
 
 // ---------- каркас ----------
-type ViewName = "dashboard" | "pcs" | "guests" | "tariffs" | "sessions" | "apps" | "blocked";
+type ViewName = "dashboard" | "pcs" | "guests" | "tariffs" | "sessions" | "apps" | "blocked" | "audit";
 const VIEWS: { id: ViewName; title: string }[] = [
   { id: "dashboard", title: "Дашборд" },
   { id: "pcs", title: "Компьютеры" },
@@ -102,6 +125,7 @@ const VIEWS: { id: ViewName; title: string }[] = [
   { id: "sessions", title: "Сеансы" },
   { id: "apps", title: "Игры и приложения" },
   { id: "blocked", title: "Запреты" },
+  { id: "audit", title: "Журнал" },
 ];
 
 let serverUrl = "";
@@ -116,7 +140,9 @@ const shell = el("div", { class: "ad-shell" }, [
   el("aside", { class: "ad-side" }, [
     el("div", { class: "ad-brand" }, [el("span", { class: "brand-gradient", text: "МИРАЖ" }), el("small", { text: "PRO · админ" })]),
     nav,
-    el("div", { class: "ad-side-foot" }, [serverLabel, button("Сменить сервер", "ghost", () => showConnect())]),
+    el("div", { class: "ad-side-foot" }, [serverLabel, isLiveAdmin
+      ? button("Выйти", "ghost", () => send({ type: "saveSettings", serverUrl, key: "" }))
+      : button("Сменить сервер", "ghost", () => showConnect())]),
   ]),
   content,
 ]);
@@ -144,7 +170,7 @@ function go(view: ViewName): void {
 async function render(silent = false): Promise<void> {
   const gen = ++renderGen;
   const views: Record<ViewName, () => Promise<HTMLElement | null>> = {
-    dashboard: viewDashboard, pcs: viewPcs, guests: viewGuests, tariffs: viewTariffs, sessions: viewSessions, apps: viewApps, blocked: viewBlocked,
+    dashboard: viewDashboard, pcs: viewPcs, guests: viewGuests, tariffs: viewTariffs, sessions: viewSessions, apps: viewApps, blocked: viewBlocked, audit: viewAudit,
   };
   const node = await views[current]();
   if (gen !== renderGen || !node) return;
@@ -271,6 +297,11 @@ function openPc(p: PcRow): void {
     }),
     button("Перезагрузить", "", () => confirmBox("Перезагрузить ПК?", `${p.name} будет перезагружен.`, "Перезагрузить", () => void cmd("reboot"))),
     button("Выключить", "", () => confirmBox("Выключить ПК?", `${p.name} будет выключен.`, "Выключить", () => void cmd("shutdown"))),
+    button("Новый токен", "", () => confirmBox("Выпустить новый токен?", `Старый токен ${p.name} перестанет работать сразу. Новый нужно будет вписать на этом ПК.`, "Выпустить", async () => {
+      const r = await api<{ ok: boolean; error?: string; token?: string }>("POST", `/api/admin/pcs/${p.id}/token`);
+      if (r.status !== 200 || !r.data.token) return toast(r.data.error ?? "Не удалось", "error");
+      showToken(p.name, r.data.token);
+    })),
     button("Удалить из системы", "danger", () => confirmBox("Удалить ПК?", `${p.name} больше не сможет подключиться к серверу.`, "Удалить", () => void run(api("DELETE", `/api/admin/pcs/${p.id}`), "ПК удалён", () => void render()))),
   ]));
   modal(p.name, rows);
@@ -292,15 +323,18 @@ function addPc(): void {
 }
 
 function showToken(name: string, token: string): void {
+  const ps = (v: string) => `'${v.replace(/'/g, "''")}'`; // строка PowerShell в одинарных кавычках: без подстановок
+  const command = `.\\scripts\\install.ps1 -PcToken ${ps(token)} -PcName ${ps(name)} -ServerUrl ${ps(serverUrl)}`;
   const snippet = `"ServerUrl": "${serverUrl}",\n"PcToken": "${token}"`;
-  const pre = el("pre", { class: "ad-code", text: snippet });
-  const copy = button("Копировать", "primary", async () => {
-    try { await navigator.clipboard.writeText(snippet); toast("Скопировано"); } catch { toast("Не удалось скопировать: выделите текст вручную", "error"); }
+  const copyBtn = (label: string, text: string, cls = "") => button(label, cls, async () => {
+    try { await navigator.clipboard.writeText(text); toast("Скопировано"); } catch { toast("Не удалось скопировать: выделите текст вручную", "error"); }
   });
   modal(`Токен для ${name}`, [
-    el("p", { class: "ad-text", text: "Токен показывается один раз: на сервере хранится только его хеш. Впишите эти две строки в C:\\ProgramData\\ClubShell\\config.json на этом компьютере и перезапустите службу ClubShell." }),
-    pre,
-  ], [copy]);
+    el("p", { class: "ad-text", text: "Токен показывается один раз: на сервере хранится только его хеш. На этом компьютере в папке с программой запустите PowerShell от администратора и выполните команду:" }),
+    el("pre", { class: "ad-code", text: command }),
+    el("p", { class: "ad-muted", text: "Если служба уже установлена, можно вместо этого вписать две строки в C:\\ProgramData\\ClubShell\\config.json и перезапустить службу ClubShell:" }),
+    el("pre", { class: "ad-code", text: snippet }),
+  ], [copyBtn("Копировать строки", snippet), copyBtn("Копировать команду", command, "primary")]);
 }
 
 // ---------- гости ----------
@@ -332,11 +366,13 @@ async function viewGuests(): Promise<HTMLElement | null> {
 
 function newGuest(): void {
   const login = textInput("", "text", "Логин");
-  const pass = textInput("", "text", "Пароль (от 4 символов)");
+  const pass = textInput("", "text", "Пароль (от 6 символов)");
   const bal = textInput("0", "number", "0");
   const close = modal("Новый гость", [field("Логин", login), field("Пароль", pass), field("Начальный баланс, ₽", bal)], [
     button("Создать", "primary", async () => {
-      const ok = await run(api("POST", "/api/admin/guests", { login: login.value.trim(), password: pass.value, balance: Number(bal.value) || 0 }), "Гость создан", () => void render());
+      const balance = bal.value.trim() === "" ? 0 : intOf(bal);
+      if (balance === null) return toast("Начальный баланс — целое число рублей", "error");
+      const ok = await run(api("POST", "/api/admin/guests", { login: login.value.trim(), password: pass.value, balance }), "Гость создан", () => void render());
       if (ok) close();
     }),
   ]);
@@ -344,14 +380,21 @@ function newGuest(): void {
 }
 
 function moneyDialog(g: GuestRow, sign: 1 | -1): void {
+  const requestId = newRequestId(); // один на окно: повторное нажатие сервер не проведёт второй раз
   const amount = textInput("100", "number");
   const note = textInput("", "text", "Комментарий (необязательно)");
   const close = modal(`${sign > 0 ? "Пополнить" : "Списать"}: ${g.login}`, [el("p", { class: "ad-muted", text: `Сейчас на балансе ${rub(g.balance)}` }), field("Сумма, ₽", amount), field("Комментарий", note)], [
     button(sign > 0 ? "Пополнить" : "Списать", "primary", async () => {
-      const n = Math.abs(Math.round(Number(amount.value)));
-      if (!n) return toast("Введите сумму", "error");
-      const ok = await run(api("POST", `/api/admin/guests/${g.id}/topup`, { amount: n * sign, note: note.value.trim() || null }), "Готово", () => void render());
-      if (ok) close();
+      const n = intOf(amount);
+      if (!n) return toast("Сумма — целое число рублей больше нуля", "error");
+      const after = g.balance + n * sign;
+      const go = async () => {
+        const ok = await run(api("POST", `/api/admin/guests/${g.id}/topup`, { amount: n * sign, note: note.value.trim() || null, requestId }), "Готово", () => void render());
+        if (ok) close();
+      };
+      // крупная сумма — лишняя проверка от опечатки (10000 вместо 1000)
+      if (n >= 5000) return confirmBox(`${sign > 0 ? "Пополнить" : "Списать"} ${rub(n)}?`, `Баланс ${g.login}: ${rub(g.balance)} → ${rub(after)}`, "Да, провести", () => void go());
+      await go();
     }),
   ]);
   amount.select();
@@ -359,7 +402,7 @@ function moneyDialog(g: GuestRow, sign: 1 | -1): void {
 
 function passwordDialog(g: GuestRow): void {
   const pass = textInput("", "text", "Новый пароль");
-  const close = modal(`Пароль: ${g.login}`, [field("Новый пароль (от 4 символов)", pass)], [
+  const close = modal(`Пароль: ${g.login}`, [field("Новый пароль (от 6 символов)", pass)], [
     button("Сменить", "primary", async () => { if (await run(api("PUT", `/api/admin/guests/${g.id}`, { password: pass.value }), "Пароль изменён")) close(); }),
   ]);
   pass.focus();
@@ -367,6 +410,7 @@ function passwordDialog(g: GuestRow): void {
 
 async function history(g: GuestRow): Promise<void> {
   const r = await api<TxRow[]>("GET", `/api/admin/guests/${g.id}/transactions`);
+  if (r.status !== 200) return void toast(r.status === 401 ? "Неверный ключ администратора" : "Не удалось загрузить историю", "error");
   const rows = (Array.isArray(r.data) ? r.data : []).map((t) => [when(t.ts), el("b", { class: t.amount > 0 ? "ad-plus" : "ad-minus", text: `${t.amount > 0 ? "+" : ""}${t.amount} ₽` }), t.kind === "session" ? "сеанс" : t.kind === "topup" ? "пополнение" : "списание", t.note ?? ""]);
   modal(`История: ${g.login}`, [table(["Когда", "Сумма", "Тип", "Комментарий"], rows, "Операций нет")]);
 }
@@ -408,8 +452,11 @@ function tariffDialog(t?: TariffRow): void {
     el("label", { class: "ad-check" }, [active, el("span", { text: "Включён" })]),
   ], [
     button("Сохранить", "primary", async () => {
+      const m = intOf(minutes), pr = intOf(price);
+      if (!m) return toast("Минуты — целое число больше нуля", "error");
+      if (pr === null) return toast("Цена — целое число рублей (0 — бесплатно)", "error");
       const ok = await run(api("PUT", "/api/admin/tariffs", {
-        id: id.value.trim(), name: name.value.trim(), minutes: Number(minutes.value), price: Number(price.value),
+        id: id.value.trim(), name: name.value.trim(), minutes: m, price: pr,
         nightOnly: night.checked, zone: zone.value.trim() || "ARENA", active: active.checked, sort: Number(sort.value) || 0,
       }), "Тариф сохранён", () => void render());
       if (ok) close();
@@ -570,6 +617,20 @@ async function viewBlocked(): Promise<HTMLElement | null> {
   ]);
 }
 
+// ---------- журнал действий администратора ----------
+interface AuditRow { id: number; ts: number; ip: string | null; action: string; details: string | null }
+
+async function viewAudit(): Promise<HTMLElement | null> {
+  const r = await api<AuditRow[]>("GET", "/api/admin/audit");
+  if (r.status !== 200) return connectionProblem(r.status);
+  const rows = (Array.isArray(r.data) ? r.data : []).map((a) => [when(a.ts), el("b", { text: a.action }), a.details ?? "", el("span", { class: "ad-muted", text: a.ip ?? "" })]);
+  return el("div", {}, [
+    header("Журнал действий"),
+    el("p", { class: "ad-muted ad-note", text: "Последние 300 изменений из админки: пополнения и списания, команды ПК, правки гостей, тарифов и каталога." }),
+    table(["Когда", "Действие", "Подробности", "IP"], rows, "Записей пока нет"),
+  ]);
+}
+
 // ---------- подключение ----------
 function showConnect(message = ""): void {
   window.clearInterval(timer);
@@ -588,16 +649,18 @@ function showConnect(message = ""): void {
       el("div", { class: "ad-brand big" }, [el("span", { class: "brand-gradient", text: "МИРАЖ" }), el("small", { text: "PRO · админ" })]),
       el("div", { class: "ad-connect-box" }, [
         el("h1", { text: "Подключение к серверу" }),
-        field("Адрес сервера", url),
+        ...(isLiveAdmin ? [] : [field("Адрес сервера", url)]),
         field("Ключ администратора", key),
         err,
         go1,
-        el("p", { class: "ad-muted", text: "Ключ хранится на этом компьютере в зашифрованном виде и не передаётся странице." }),
+        el("p", { class: "ad-muted", text: isLiveAdmin
+          ? "Ключ запоминается в этом браузере. На чужом компьютере после работы нажмите «Выйти»."
+          : "Ключ хранится на этом компьютере в зашифрованном виде и не передаётся странице." }),
       ]),
     ]),
   );
   key.addEventListener("keydown", (e) => (e as KeyboardEvent).key === "Enter" && go1.click());
-  (serverUrl ? key : url).focus();
+  (serverUrl || isLiveAdmin ? key : url).focus();
 }
 
 let waitingConnect = false;

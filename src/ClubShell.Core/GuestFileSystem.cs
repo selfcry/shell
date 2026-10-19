@@ -22,7 +22,15 @@ public sealed class GuestFileSystem
     public IReadOnlyList<FsRoot> Roots { get; }
 
     public GuestFileSystem(IEnumerable<FsRoot> roots) =>
-        Roots = roots.Select(r => new FsRoot(r.Name, Path.GetFullPath(r.Path).TrimEnd(Path.DirectorySeparatorChar))).Where(r => Directory.Exists(r.Path + Path.DirectorySeparatorChar)).ToList();
+        Roots = roots.Select(r => new FsRoot(r.Name, Path.GetFullPath(r.Path).TrimEnd(Path.DirectorySeparatorChar)))
+            .Where(r => Directory.Exists(r.Path + Path.DirectorySeparatorChar) && !IsLink(r.Path)) // корень-ссылка (Downloads -> C:\) не принимается
+            .ToList();
+
+    private static bool IsLink(string path)
+    {
+        try { var d = new DirectoryInfo(path); return d.Attributes.HasFlag(FileAttributes.ReparsePoint) || d.LinkTarget is not null; }
+        catch (Exception) { return true; }
+    }
 
     private static bool Inside(string root, string full) =>
         full.Equals(root, PathCmp) || full.StartsWith(root + Path.DirectorySeparatorChar, PathCmp);
@@ -38,8 +46,9 @@ public sealed class GuestFileSystem
         foreach (var part in full.Length > root.Path.Length ? full[(root.Path.Length + 1)..].Split(Path.DirectorySeparatorChar) : Array.Empty<string>())
         {
             cur = Path.Combine(cur, part);
-            if (!File.Exists(cur) && !Directory.Exists(cur)) break;
-            if (new FileInfo(cur).Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new FsException("Ссылки не поддерживаются");
+            var info = new FileInfo(cur);
+            if (info.Attributes.HasFlag(FileAttributes.ReparsePoint) || info.LinkTarget is not null) throw new FsException("Ссылки не поддерживаются"); // в том числе висячие
+            if (!info.Exists && !Directory.Exists(cur)) break;
         }
         return full;
     }

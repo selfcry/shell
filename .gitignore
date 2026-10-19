@@ -5,6 +5,7 @@ dist/
 dist-*/
 publish/
 out/
+build/
 *.zip
 node_modules/
 # данные и секреты

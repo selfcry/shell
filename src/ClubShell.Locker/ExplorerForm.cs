@@ -19,8 +19,15 @@ internal sealed class ExplorerForm : Form
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    // Скрипты и реестр открывать из проводника нельзя; исполняемые файлы разрешены, но запрещённые программы из списка сервера закрываются сами.
-    private static readonly string[] DeniedExt = { ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".reg", ".msc", ".hta", ".scr", ".com", ".cpl", ".lnk" };
+    // Открывать из проводника можно только картинки, видео, музыку и PDF. Программы, скрипты, ярлыки, архивы и текст — нет:
+    // скачанный exe или даже Блокнот (его диалог «Открыть») — это прямой выход из оболочки к cmd.exe.
+    private static readonly HashSet<string> AllowedExt = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+        ".mp4", ".mkv", ".avi", ".mov", ".webm",
+        ".mp3", ".wav", ".flac", ".ogg", ".m4a",
+        ".pdf",
+    };
 
     private readonly CoreWebView2Environment _env;
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
@@ -44,14 +51,15 @@ internal sealed class ExplorerForm : Form
     private static GuestFileSystem BuildFs()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        // Пути фиксированные внутри профиля: «Документы» из реестра (User Shell Folders) гость мог бы направить на C:\
         var roots = new List<FsRoot>
         {
             new("Загрузки", Path.Combine(profile, "Downloads")),
-            new("Документы", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)),
-            new("Рабочий стол", Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)),
-            new("Изображения", Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)),
-            new("Видео", Environment.GetFolderPath(Environment.SpecialFolder.MyVideos)),
-            new("Музыка", Environment.GetFolderPath(Environment.SpecialFolder.MyMusic)),
+            new("Документы", Path.Combine(profile, "Documents")),
+            new("Рабочий стол", Path.Combine(profile, "Desktop")),
+            new("Изображения", Path.Combine(profile, "Pictures")),
+            new("Видео", Path.Combine(profile, "Videos")),
+            new("Музыка", Path.Combine(profile, "Music")),
         };
         // внешние диски (флешки), но не диск с системой
         var sysRoot = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
@@ -82,7 +90,7 @@ internal sealed class ExplorerForm : Form
         _web.CoreWebView2.WebMessageReceived += OnWebMessage;
         _web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
 
-        var dev = Environment.GetEnvironmentVariable("CLUBSHELL_DEV_URL");
+        var dev = DevFlags.Get("CLUBSHELL_DEV_URL");
         if (!string.IsNullOrEmpty(dev)) _web.CoreWebView2.Navigate(dev.TrimEnd('/') + "/explorer.html");
         else
         {
@@ -143,8 +151,8 @@ internal sealed class ExplorerForm : Form
                 case "open":
                 {
                     var full = fs.Resolve(Str(r, "path"));
-                    var ext = Path.GetExtension(full).ToLowerInvariant();
-                    if (DeniedExt.Contains(ext)) throw new FsException("Этот тип файлов открывать запрещено");
+                    if (!File.Exists(full)) throw new FsException("Открыть можно только файл");
+                    if (!AllowedExt.Contains(Path.GetExtension(full))) throw new FsException("Такие файлы здесь не открываются. Программы запускаются из каталога клуба.");
                     if (_isBlocked(Path.GetFileName(full))) throw new FsException("Эта программа запрещена в клубе");
                     Process.Start(new ProcessStartInfo(full) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(full) ?? "" });
                     break;

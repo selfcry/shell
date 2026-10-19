@@ -1,3 +1,4 @@
+using ClubShell.Core;
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
@@ -59,7 +60,7 @@ internal sealed class SwitcherForm : Form
         s.AreBrowserAcceleratorKeysEnabled = false;
         _web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
 
-        var dev = Environment.GetEnvironmentVariable("CLUBSHELL_DEV_URL");
+        var dev = DevFlags.Get("CLUBSHELL_DEV_URL");
         if (!string.IsNullOrEmpty(dev)) _web.CoreWebView2.Navigate(dev.TrimEnd('/') + "/switcher.html");
         else
         {

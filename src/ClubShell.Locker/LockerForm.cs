@@ -25,10 +25,11 @@ internal sealed class LockerForm : Form
     /// <summary>Если служба молчит дольше, считаем, что её нет, и блокируем ПК.</summary>
     private static readonly TimeSpan ServiceSilenceLimit = TimeSpan.FromSeconds(15);
 
-    private readonly bool _devMode = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CLUBSHELL_DEV_URL"));
+    private readonly bool _devMode = !string.IsNullOrEmpty(DevFlags.Get("CLUBSHELL_DEV_URL"));
     // Тестовый запуск без службы (CLUBSHELL_TEST=1): окно не требует службу, хук клавиатуры выключен, выход по PIN 0000.
-    private readonly bool _test = Environment.GetEnvironmentVariable("CLUBSHELL_TEST") == "1";
-    private readonly SwitchableClubApi _api = new(new FakeClubApi()); // заглушка, пока служба не пришлёт адрес сервера
+    private readonly bool _test = DevFlags.Get("CLUBSHELL_TEST") == "1";
+    // Пока служба не прислала адрес сервера: на боевом ПК вход закрыт, у разработчика — тестовая заглушка.
+    private readonly SwitchableClubApi _api = new(DevFlags.IsProductionPc ? new UnconfiguredClubApi() : new FakeClubApi());
     private readonly SessionManager _session;
     private readonly ServiceLink _service = new();
     private readonly KeyboardHook _hook = new();
@@ -66,8 +67,8 @@ internal sealed class LockerForm : Form
 
         _requireService = !_test;
         // Тест «всё вместе» без службы: оболочка сама ходит на сервер (CLUBSHELL_SERVER_URL + CLUBSHELL_PC_TOKEN) и слушает его команды.
-        if (_test && Environment.GetEnvironmentVariable("CLUBSHELL_SERVER_URL") is { Length: > 0 } testUrl
-                  && Environment.GetEnvironmentVariable("CLUBSHELL_PC_TOKEN") is { Length: > 0 } testToken)
+        if (_test && DevFlags.Get("CLUBSHELL_SERVER_URL") is { Length: > 0 } testUrl
+                  && DevFlags.Get("CLUBSHELL_PC_TOKEN") is { Length: > 0 } testToken)
         {
             _serverUrl = testUrl;
             _api.Inner = new HttpClubApi(testUrl, testToken);
@@ -239,7 +240,7 @@ internal sealed class LockerForm : Form
                 // В боевой установке эти команды выполняет служба (она SYSTEM) и окну они не приходят.
                 // В тестовом режиме окно делает это само, но только если разрешено (CLUBSHELL_TEST_POWER=1).
                 if (!_test) break;
-                if (Environment.GetEnvironmentVariable("CLUBSHELL_TEST_POWER") != "1")
+                if (DevFlags.Get("CLUBSHELL_TEST_POWER") != "1")
                 {
                     Post(new { type = "notice", text = $"Тест: команда «{msg.Name}» получена, но не выполнена (разрешите запуском с -AllowPower)" });
                     break;
@@ -304,7 +305,7 @@ internal sealed class LockerForm : Form
         _web.CoreWebView2.WebMessageReceived += OnWebMessage;
         _web.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
 
-        var dev = Environment.GetEnvironmentVariable("CLUBSHELL_DEV_URL"); // например http://localhost:5173
+        var dev = DevFlags.Get("CLUBSHELL_DEV_URL"); // например http://localhost:5173
         if (!string.IsNullOrEmpty(dev))
         {
             _web.CoreWebView2.Navigate(dev);
@@ -442,7 +443,7 @@ internal sealed class LockerForm : Form
     // ---------- каталог игр ----------
 
     private static string CatalogPath() =>
-        Environment.GetEnvironmentVariable("CLUBSHELL_CATALOG")
+        DevFlags.Get("CLUBSHELL_CATALOG")
         ?? Path.Combine(AppContext.BaseDirectory, "ui", "config", "catalog.json");
 
     /// <summary>Читает каталог, оставляет найденное на этом ПК и отдаёт интерфейсу только то, что нужно для показа.</summary>
@@ -614,7 +615,8 @@ internal sealed class LockerForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        if (!_allowExit) e.Cancel = true; // Alt+F4 и закрытие из диспетчера окон игнорируем
+        // Alt+F4 и закрытие из диспетчера окон игнорируем, но перезагрузку и выключение Windows не держим
+        if (!_allowExit && e.CloseReason != CloseReason.WindowsShutDown) e.Cancel = true;
         base.OnFormClosing(e);
     }
 

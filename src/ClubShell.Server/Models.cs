@@ -16,7 +16,7 @@ public record HeartbeatReq(string? Username);
 public record NewPcReq(string Name, string? Zone);
 public record NewGuestReq(string Login, string Password, int? Balance, string? Birth);
 public record UpdateGuestReq(string? Password, bool? Banned, string? Birth);
-public record TopUpReq(int Amount, string? Note);
+public record TopUpReq(int Amount, string? Note, string? RequestId); // RequestId: повтор того же запроса (двойной клик) не проводится второй раз
 public record TariffReq(string Id, string Name, int Minutes, int Price, bool NightOnly, string? Zone, bool? Active, int? Sort);
 public record AppReq(string? Id, string? Title, string? Kind, string? Group, List<string>? Paths, string? Args, string? WorkDir, bool? ClubAccount, int? MinAge, bool? Enabled, bool? Pinned, int? Sort);
 public record BlockedReq(string? Process, string? Note);

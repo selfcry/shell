@@ -57,7 +57,7 @@ internal sealed class ServiceLink : IDisposable
         if (writer is null) return;
         await _writeGate.WaitAsync();
         try { await writer.WriteLineAsync(message.ToLine()); }
-        catch (IOException) { /* канал оборвался, RunAsync переподключится */ }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException) { /* канал оборвался, RunAsync переподключится */ }
         finally { _writeGate.Release(); }
     }
 

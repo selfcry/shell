@@ -69,6 +69,7 @@ export function buildHome(h: HomeHandlers): HomeScreen {
   let balance = 0;
   let packages: TariffPackage[] = [];
   let sessionActive = false;
+  let buying = false; // запрос на покупку тарифа уже ушёл
   let totalSec = 0;
   let left = 0;
   let favs = new Set<string>();
@@ -150,7 +151,13 @@ export function buildHome(h: HomeHandlers): HomeScreen {
         el("div", { class: "hm-pkg-price brand-gradient", text: `${p.price} ₽` }),
         el("div", { class: "hm-pkg-note", text: note }),
       ]);
-      b.addEventListener("click", () => ((modalErr.textContent = ""), h.onStartSession(p.id)));
+      b.addEventListener("click", () => {
+        if (buying) return; // двойной клик: второй запрос пришёл бы с ошибкой «сеанс уже идёт»
+        buying = true;
+        window.setTimeout(() => (buying = false), 4000);
+        modalErr.textContent = "";
+        h.onStartSession(p.id);
+      });
       return b;
     });
     modalBody.replaceChildren(
@@ -226,6 +233,7 @@ export function buildHome(h: HomeHandlers): HomeScreen {
         openTariffs();
         return;
       }
+      if (btn.classList.contains("busy")) return; // уже запускается: второй клик не откроет игру дважды
       btn.classList.add("busy");
       h.onLaunch(item.id);
       window.setTimeout(() => btn.classList.remove("busy"), 1500);

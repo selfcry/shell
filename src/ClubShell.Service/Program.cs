@@ -9,7 +9,7 @@ builder.Services.AddSingleton(shellConfig);
 // Адрес и токен заданы в config.json — работаем с настоящим сервером, иначе заглушка с тестовыми гостями.
 builder.Services.AddSingleton<IClubApi>(_ => !string.IsNullOrWhiteSpace(shellConfig.ServerUrl) && !string.IsNullOrWhiteSpace(shellConfig.PcToken)
     ? new HttpClubApi(shellConfig.ServerUrl, shellConfig.PcToken)
-    : new FakeClubApi());
+    : new UnconfiguredClubApi()); // без токена ПК вход закрыт: тестовых гостей на боевом ПК быть не должно
 builder.Services.AddSingleton<CommandBus>();
 builder.Services.AddSingleton<LinkState>();
 

@@ -21,6 +21,8 @@ try {
     $sys  = "$base\Software\Microsoft\Windows\CurrentVersion\Policies\System"
     $exp  = "$base\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
     $win  = "$base\Software\Microsoft\Windows NT\CurrentVersion\Winlogon"
+    $pol  = "$base\Software\Policies\Microsoft\Windows\System"
+    $acc  = "$base\Control Panel\Accessibility"
 
     $values = @(
         @{ Path = $sys; Name = "DisableTaskMgr";        Value = 1 },   # диспетчер задач
@@ -29,8 +31,22 @@ try {
         @{ Path = $sys; Name = "DisableRegistryTools";  Value = 1 },   # regedit
         @{ Path = $exp; Name = "NoRun";                 Value = 1 },   # Win+R
         @{ Path = $exp; Name = "NoWinKeys";             Value = 1 },   # сочетания с Win
-        @{ Path = $exp; Name = "NoControlPanel";        Value = 1 }
+        @{ Path = $exp; Name = "NoControlPanel";        Value = 1 },
+        @{ Path = $pol; Name = "DisableCMD";            Value = 1 }    # cmd.exe и .bat даже из диалогов «Открыть» в играх
     )
+
+    # Залипание, фильтрация и озвучивание клавиш (5×Shift, удержание Shift, NumLock 5 c) открывают окна со ссылками
+    # в «Параметры» — классический выход из киоска. Флаги без «горячей клавиши»: сами функции работают, вызвать их нельзя.
+    $access = @(
+        @{ Path = "$acc\StickyKeys"; Value = "506" },
+        @{ Path = "$acc\Keyboard Response"; Value = "122" },
+        @{ Path = "$acc\ToggleKeys"; Value = "58" }
+    )
+    foreach ($a in $access) {
+        if ($Undo) { continue } # значения по умолчанию Windows вернёт сама при сбросе профиля
+        New-Item -Path $a.Path -Force | Out-Null
+        New-ItemProperty -Path $a.Path -Name "Flags" -Value $a.Value -PropertyType String -Force | Out-Null
+    }
 
     foreach ($v in $values) {
         if ($Undo) { Remove-ItemProperty -Path $v.Path -Name $v.Name -ErrorAction SilentlyContinue }

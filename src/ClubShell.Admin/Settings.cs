@@ -11,7 +11,7 @@ namespace ClubShell.Admin;
 /// </summary>
 internal sealed class Settings
 {
-    public string ServerUrl { get; set; } = "";
+    public string ServerUrl { get; set; } = "https://cryvx.ru";
     public string KeyProtected { get; set; } = "";
 
     private static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClubShell.Admin", "settings.json");
