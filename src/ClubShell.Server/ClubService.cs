@@ -166,10 +166,11 @@ public sealed class ClubService
 
     // ---------- гости ----------
 
-    public Result CreateGuest(string login, string password, int balance, string? birth)
+    /// <param name="demoSeed">только для демо-гостей тестового сервера (demo/demo): без требований к длине пароля</param>
+    public Result CreateGuest(string login, string password, int balance, string? birth, bool demoSeed = false)
     {
         if (password is null) return new Result(false, "Нужен пароль");
-        var bad = Validate(login, password);
+        var bad = Validate(login, demoSeed ? null : password);
         if (bad is not null) return new Result(false, bad);
         if (balance < 0 || balance > MaxBalance) return new Result(false, "Недопустимый начальный баланс");
         var hash = Security.HashPassword(password);
@@ -545,8 +546,8 @@ public sealed class ClubService
         }
         if (demo && Db.Scalar<long>(c, "SELECT COUNT(*) FROM guests") == 0)
         {
-            CreateGuest("demo", "demo", 600, null);
-            CreateGuest("vip", "vipvip", 2000, null);
+            CreateGuest("demo", "demo", 600, null, demoSeed: true);
+            CreateGuest("vip", "vipvip", 2000, null, demoSeed: true);
         }
     }
 }

@@ -123,6 +123,9 @@ Check "самостоятельная регистрация гостя $reg" ($
 $dup = Call POST "/api/pc/register" $pc @{ username = $reg; password = "secret123"; birth = "2000-01-01" }
 Check "повторный логин занят" ($dup.Data.ok -eq $false)
 
+$steal = Call POST "/api/pc/session/start" $pc @{ username = $chk; packageId = "h1" }
+Check "без входа гостя сеанс за его счёт не купить" ($steal.Data.ok -eq $false)
+Check "вход $chk" ((Call POST "/api/pc/login" $pc @{ username = $chk; password = "check12345" }).Data.ok -eq $true)
 $st = Call POST "/api/pc/session/start" $pc @{ username = $chk; packageId = "h1" }
 Check "старт сеанса: списано 140, баланс 360" ($st.Data.ok -eq $true -and $st.Data.balance -eq 360 -and $st.Data.minutes -eq 60)
 $st2 = Call POST "/api/pc/session/start" $pc @{ username = $chk; packageId = "h1" }
